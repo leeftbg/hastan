@@ -1,0 +1,35 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: hastan
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
+          tools: composer
+
+      - name: Install dependencies
+        working-directory: hastan
+        run: composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction
+
+      - name: Build zip
+        run: |
+          rm -rf hastan/.git hastan/.github
+          find hastan/vendor -maxdepth 3 -type d \( -name tests -o -name examples -o -name fixtures -o -name docs \) -prune -exec rm -rf {} +
+          zip -qr9 hastan.zip hastan
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: hastan.zip
