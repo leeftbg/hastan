@@ -159,6 +159,7 @@ class Hastan_Brain
 - Переносы, новые сроки и отмены делай через update_task.
 - Отвечай коротко и по делу, обычным текстом без Markdown, звёздочек и решёток. Списки оформляй строками с тире. Обращайся на «вы».
 - Когда пользователь просто сообщает задачу или что сделал, а ты всё записал, ответь ровно одним словом: ок. Не пересказывай задачи, не перечисляй, что ещё горит, не напоминай о других делах: он только что сам об этом написал. Пиши больше, только если он сам спросил или без уточнения никак.
+- Пункты с пометкой (по желанию) не упоминай, пока пользователь сам не спросит про них («что по желанию?»). Сроков у них нет. Улучшения, без которых работа и так готова, добавляй как пункты по желанию.
 - Важное (несоответствие, ошибка, риск) пиши одной строкой с ❗ в начале, без объяснений и рассуждений. Не превращай такие неясности в пункты «уточнить» и не проси пользователя их выяснять. Например: «❗ Время начала маскарада разное в постах: 20:00 и 21:00». Все сообщения максимально коротко: только суть.
 - Когда просят идеи, предлагай конкретные: тема, формат (пост, сторис, Reels), зацепка. С учётом задач и событий из списка.
 - Не придумывай, что задача выполнена, если пользователь этого не сказал.
@@ -193,8 +194,11 @@ PROMPT;
             $out[] = "#{$task['id']} {$project}{$task['title']}" . ($due ? ' — срок ' . $due->format('d.m') : ' — без срока')
                 . ($task['notes'] ? " (заметка: {$task['notes']})" : '');
             foreach (Hastan_DB::items((int) $task['id']) as $item) {
+                if ((int) $item['optional'] && $item['status'] !== 'open') {
+                    continue;
+                }
                 $mark = $item['status'] === 'done' ? 'x' : ' ';
-                $out[] = "   #{$item['id']} [{$mark}] {$item['title']}";
+                $out[] = "   #{$item['id']} [{$mark}] " . ((int) $item['optional'] ? '(по желанию) ' : '') . $item['title'];
             }
         }
         return implode("\n", $out);
@@ -216,15 +220,16 @@ PROMPT;
                         'due' => ['type' => ['string', 'null'], 'description' => 'Срок, только дата YYYY-MM-DD, или null'],
                         'template' => ['type' => ['string', 'null'], 'description' => 'Ключ шаблона (' . implode(', ', $templates) . ') или null'],
                         'notes' => ['type' => ['string', 'null'], 'description' => 'Подробности, если есть'],
-                        'extra_items' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Дополнительные пункты чек-листа сверх шаблона'],
+                        'extra_items' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Дополнительные обязательные пункты чек-листа сверх шаблона'],
+                        'optional_items' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Пункты «по желанию»: улучшения, без которых работа всё равно готова'],
                     ],
-                    'required' => ['title', 'project', 'due', 'template', 'notes', 'extra_items'],
+                    'required' => ['title', 'project', 'due', 'template', 'notes', 'extra_items', 'optional_items'],
                     'additionalProperties' => false,
                 ],
             ],
             [
                 'name' => 'update_task',
-                'description' => 'Меняет задачу или пункт чек-листа: статус (open, done, cancelled), срок, название, заметку. Поля, которые не меняются, передай как null.',
+                'description' => 'Меняет задачу или пункт чек-листа: статус (open, done, cancelled), срок, название, заметку, пометку «по желанию» для пункта. Поля, которые не меняются, передай как null.',
                 'strict' => true,
                 'inputSchema' => [
                     'type' => 'object',
@@ -234,8 +239,9 @@ PROMPT;
                         'due' => ['type' => ['string', 'null'], 'description' => 'Новый срок, только дата YYYY-MM-DD'],
                         'title' => ['type' => ['string', 'null']],
                         'notes' => ['type' => ['string', 'null']],
+                        'optional' => ['type' => ['boolean', 'null'], 'description' => 'Только для пункта: true — «по желанию», false — обязательный, null — не менять'],
                     ],
-                    'required' => ['id', 'status', 'due', 'title', 'notes'],
+                    'required' => ['id', 'status', 'due', 'title', 'notes', 'optional'],
                     'additionalProperties' => false,
                 ],
             ],
@@ -262,8 +268,9 @@ PROMPT;
                     'properties' => [
                         'task_id' => ['type' => 'integer'],
                         'items' => ['type' => 'array', 'items' => ['type' => 'string']],
+                        'optional' => ['type' => 'boolean', 'description' => 'true — все эти пункты «по желанию»: не обязательны, без сроков, исчезают вместе с задачей'],
                     ],
-                    'required' => ['task_id', 'items'],
+                    'required' => ['task_id', 'items', 'optional'],
                     'additionalProperties' => false,
                 ],
             ],
@@ -316,6 +323,10 @@ PROMPT;
                 foreach (array_values($items) as $pos => $item) {
                     Hastan_DB::create_task(['parent_id' => $task_id, 'title' => (string) $item, 'position' => $pos, 'source' => $source]);
                 }
+                $pos = count($items);
+                foreach ((array) ($input['optional_items'] ?? []) as $item) {
+                    Hastan_DB::create_task(['parent_id' => $task_id, 'title' => (string) $item, 'position' => $pos++, 'optional' => true, 'source' => $source]);
+                }
                 return "Создано.\n" . self::render_tasks([Hastan_DB::get_task($task_id)], 'Задача');
 
             case 'update_task':
@@ -339,15 +350,15 @@ PROMPT;
                 if (isset($input['notes'])) {
                     $fields['notes'] = $input['notes'];
                 }
+                if (isset($input['optional']) && (int) $task['parent_id']) {
+                    $fields['optional'] = $input['optional'] ? 1 : 0;
+                }
+                if (in_array($fields['status'] ?? '', ['done', 'cancelled'], true) && !(int) $task['parent_id']) {
+                    Hastan_DB::close_task((int) $task['id'], $fields['status']);
+                    unset($fields['status']);
+                }
                 if ($fields) {
                     Hastan_DB::update_task((int) $task['id'], $fields);
-                }
-                if (($fields['status'] ?? '') === 'done' && !(int) $task['parent_id']) {
-                    foreach (Hastan_DB::items((int) $task['id']) as $item) {
-                        if ($item['status'] === 'open') {
-                            Hastan_DB::update_task((int) $item['id'], ['status' => 'done']);
-                        }
-                    }
                 }
                 if ((int) $task['parent_id']) {
                     Hastan_DB::maybe_close_parent((int) $task['parent_id']);
@@ -380,10 +391,11 @@ PROMPT;
                     throw new InvalidArgumentException('задача не найдена');
                 }
                 $pos = count(Hastan_DB::items((int) $task['id']));
+                $optional = !empty($input['optional']);
                 foreach ((array) ($input['items'] ?? []) as $item) {
-                    Hastan_DB::create_task(['parent_id' => (int) $task['id'], 'title' => (string) $item, 'position' => $pos++, 'source' => $source]);
+                    Hastan_DB::create_task(['parent_id' => (int) $task['id'], 'title' => (string) $item, 'position' => $pos++, 'optional' => $optional, 'source' => $source]);
                 }
-                if ($task['status'] === 'done') {
+                if ($task['status'] === 'done' && !$optional) {
                     Hastan_DB::update_task((int) $task['id'], ['status' => 'open']);
                 }
                 return 'Готово.';

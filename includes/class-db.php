@@ -9,7 +9,7 @@ if (!defined('ABSPATH')) {
  */
 class Hastan_DB
 {
-    const VERSION = '2';
+    const VERSION = '3';
 
     public static function tasks_table(): string
     {
@@ -40,6 +40,7 @@ class Hastan_DB
   project varchar(60) NOT NULL DEFAULT '',
   status varchar(20) NOT NULL DEFAULT 'open',
   position int(11) NOT NULL DEFAULT 0,
+  optional tinyint(1) NOT NULL DEFAULT 0,
   due_at datetime NULL,
   reminded_at datetime NULL,
   done_at datetime NULL,
@@ -74,6 +75,7 @@ class Hastan_DB
             'project' => mb_substr((string) ($data['project'] ?? ''), 0, 60),
             'status' => 'open',
             'position' => (int) ($data['position'] ?? 0),
+            'optional' => !empty($data['optional']) ? 1 : 0,
             'due_at' => $data['due_at'] ?? null,
             'source' => $data['source'] ?? '',
             'created_at' => gmdate('Y-m-d H:i:s'),
@@ -129,7 +131,7 @@ class Hastan_DB
         ), ARRAY_A);
     }
 
-    /** Closes the task when every checklist item is done. */
+    /** Closes the task when every required checklist item is done. Optional items don't hold it open. */
     public static function maybe_close_parent(int $task_id): bool
     {
         $items = self::items($task_id);
@@ -137,16 +139,27 @@ class Hastan_DB
             return false;
         }
         foreach ($items as $item) {
-            if ($item['status'] === 'open') {
+            if ($item['status'] === 'open' && !(int) $item['optional']) {
                 return false;
             }
         }
         $task = self::get_task($task_id);
         if ($task && $task['status'] === 'open') {
-            self::update_task($task_id, ['status' => 'done']);
+            self::close_task($task_id, 'done');
             return true;
         }
         return false;
+    }
+
+    /** Finishes or cancels a task: required items are done with it, optional ones go away. */
+    public static function close_task(int $task_id, string $status): void
+    {
+        self::update_task($task_id, ['status' => $status]);
+        foreach (self::items($task_id) as $item) {
+            if ($item['status'] === 'open') {
+                self::update_task((int) $item['id'], ['status' => $status === 'done' && !(int) $item['optional'] ? 'done' : 'cancelled']);
+            }
+        }
     }
 
     /* ---------- chat log ---------- */

@@ -195,12 +195,7 @@ class Hastan_Telegram
         }
 
         if ($action === 'done') {
-            Hastan_DB::update_task((int) $id, ['status' => 'done']);
-            foreach (Hastan_DB::items((int) $id) as $item) {
-                if ($item['status'] === 'open') {
-                    Hastan_DB::update_task((int) $item['id'], ['status' => 'done']);
-                }
-            }
+            Hastan_DB::close_task((int) $id, 'done');
             $note = "Отмечено как сделанное: {$task['title']}";
         } elseif ($action === 'tomorrow') {
             $tomorrow = Hastan_Settings::now()->modify('+1 day');

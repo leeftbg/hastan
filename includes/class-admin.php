@@ -73,13 +73,17 @@ class Hastan_Admin
             }
             echo '</div><ul class="hastan-items">';
             foreach (Hastan_DB::items((int) $task['id']) as $item) {
+                if ($item['status'] === 'cancelled') {
+                    continue;
+                }
                 $done = $item['status'] === 'done';
                 echo '<li><form class="hastan-inline" method="post" action="' . esc_url($action_url) . '">';
                 wp_nonce_field('hastan_action');
                 echo '<input type="hidden" name="action" value="hastan_action"><input type="hidden" name="op" value="toggle">'
                     . '<input type="hidden" name="id" value="' . (int) $item['id'] . '">'
                     . '<label><input type="checkbox" onchange="this.form.submit()"' . checked($done, true, false) . '> '
-                    . '<span' . ($done ? ' class="hastan-done"' : '') . '>' . esc_html($item['title']) . '</span></label></form></li>';
+                    . '<span' . ($done ? ' class="hastan-done"' : '') . '>' . esc_html($item['title']) . '</span>'
+                    . ((int) $item['optional'] ? ' <em style="color:#888">по желанию</em>' : '') . '</label></form></li>';
             }
             echo '</ul>';
             foreach (['done' => 'Готово целиком', 'cancel' => 'Отменить'] as $op => $label) {
@@ -118,7 +122,7 @@ class Hastan_Admin
                 break;
             case 'done':
             case 'cancel':
-                Hastan_DB::update_task($id, ['status' => $op === 'done' ? 'done' : 'cancelled']);
+                Hastan_DB::close_task($id, $op === 'done' ? 'done' : 'cancelled');
                 break;
             case 'add':
                 $title = sanitize_text_field(wp_unslash($_POST['title'] ?? ''));
