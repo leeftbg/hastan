@@ -8,4 +8,4 @@
 
 ## Новая версия
 
-Поднимите `Version` и `HASTAN_VERSION` в `hastan.php`, затем создайте тег `vX.Y.Z`. GitHub Actions соберёт `hastan.zip` с зависимостями и приложит его к релизу.
+Поднимите `Version` и `HASTAN_VERSION` в `hastan.php` и отправьте изменения в `main`. GitHub Actions сам соберёт `hastan.zip` с зависимостями и выпустит релиз `vX.Y.Z`.
