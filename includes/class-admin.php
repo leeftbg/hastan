@@ -64,7 +64,7 @@ class Hastan_Admin
             echo '<div class="hastan-task"><h3>' . esc_html($task['title']) . '</h3><div class="hastan-meta">';
             if ($due) {
                 $class = $task['due_at'] < $now_utc ? ' class="hastan-overdue"' : '';
-                echo '<span' . $class . '>Срок: ' . esc_html($due->format('d.m.Y H:i')) . '</span>';
+                echo '<span' . $class . '>Срок: ' . esc_html($due->format('d.m.Y')) . '</span>';
             } else {
                 echo 'Без срока';
             }
@@ -188,7 +188,6 @@ class Hastan_Admin
         self::field('Глубина размышлений', '<select name="effort">' . $effort . '</select>');
         self::field('Утренний план', '<input type="time" name="morning_time" value="' . esc_attr($s['morning_time']) . '">');
         self::field('Вечерняя проверка', '<input type="time" name="evening_time" value="' . esc_attr($s['evening_time']) . '">');
-        self::field('Напоминать до срока, часов', '<input type="number" min="1" max="48" name="remind_before_hours" value="' . (int) $s['remind_before_hours'] . '">');
         self::field('О вас и вашей работе', '<textarea name="about" rows="3" class="large-text">' . esc_textarea($s['about']) . '</textarea><p class="description">Помощник учитывает это в ответах и идеях.</p>');
         foreach (Hastan_Templates::all() as $key => $tpl) {
             self::field('Шаблон «' . esc_html($tpl['name']) . '»', '<textarea name="tpl_' . esc_attr($key) . '" rows="6" class="large-text">' . esc_textarea(implode("\n", $tpl['items'])) . '</textarea><p class="description">Один пункт чек-листа на строку.</p>');
@@ -197,7 +196,7 @@ class Hastan_Admin
         submit_button('Сохранить');
         echo '</form>';
 
-        echo '<h2>Расписание на сервере</h2><p>Чтобы напоминания приходили вовремя, даже когда на сайт никто не заходит, добавьте в FastPanel задание cron с запуском <b>раз в час</b> (чем чаще, тем точнее время напоминаний):</p>'
+        echo '<h2>Расписание на сервере</h2><p>Чтобы утреннее и вечернее сообщения приходили, даже когда на сайт никто не заходит, добавьте в FastPanel задание cron с запуском <b>раз в час</b>:</p>'
             . '<p><code>wget -q -O /dev/null ' . esc_html($cron_url) . '</code></p></div>';
     }
 
@@ -245,7 +244,6 @@ class Hastan_Admin
                     'effort' => in_array($_POST['effort'] ?? '', ['low', 'medium', 'high'], true) ? $_POST['effort'] : 'low',
                     'morning_time' => preg_match('/^\d{2}:\d{2}$/', $_POST['morning_time'] ?? '') ? $_POST['morning_time'] : '10:00',
                     'evening_time' => preg_match('/^\d{2}:\d{2}$/', $_POST['evening_time'] ?? '') ? $_POST['evening_time'] : '20:00',
-                    'remind_before_hours' => max(1, min(48, (int) ($_POST['remind_before_hours'] ?? 2))),
                     'about' => sanitize_textarea_field(wp_unslash($_POST['about'] ?? '')),
                 ];
                 foreach (['telegram_token', 'anthropic_key'] as $secret) {

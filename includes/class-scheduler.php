@@ -4,7 +4,7 @@ if (!defined('ABSPATH')) {
 }
 
 /**
- * Runs every minute: the morning plan, the evening check and deadline reminders.
+ * Runs every minute: the morning plan and the evening check. Nothing else is sent on schedule.
  */
 class Hastan_Scheduler
 {
@@ -46,7 +46,6 @@ class Hastan_Scheduler
             $now = Hastan_Settings::now();
             self::morning($now);
             self::evening($now);
-            self::deadlines($now);
         } finally {
             delete_transient('hastan_tick_lock');
         }
@@ -106,34 +105,13 @@ class Hastan_Scheduler
         Hastan_Telegram::send($text, array_map([Hastan_Telegram::class, 'task_buttons'], array_slice($tasks, 0, 6)));
     }
 
-    public static function deadlines(DateTimeImmutable $now): void
-    {
-        $hour = (int) $now->format('G');
-        if ($hour < 8 || $hour >= 22) {
-            return; // No reminders at night; they come in the morning.
-        }
-        $hours = max(1, (int) Hastan_Settings::get('remind_before_hours'));
-        $until = gmdate('Y-m-d H:i:s', time() + $hours * HOUR_IN_SECONDS);
-        foreach (Hastan_DB::due_unreminded($until) as $task) {
-            Hastan_DB::update_task((int) $task['id'], ['reminded_at' => gmdate('Y-m-d H:i:s')]);
-            $due = Hastan_DB::utc_to_local($task['due_at']);
-            $head = $due < $now
-                ? "Срок прошёл ({$due->format('d.m H:i')}): {$task['title']}"
-                : "Скоро срок, в {$due->format('H:i')}: {$task['title']}";
-            $open = array_filter(Hastan_DB::items((int) $task['id']), fn ($i) => $i['status'] === 'open');
-            $text = $head . ($open ? "\nОсталось:\n" . implode("\n", array_map(fn ($i) => '— ' . $i['title'], $open)) : '');
-            Hastan_DB::log('assistant', $text);
-            Hastan_Telegram::send($text, [Hastan_Telegram::task_buttons($task)]);
-        }
-    }
-
     /** A list without the AI, for when Claude is unreachable. */
     private static function plain_list(string $heading, array $tasks): string
     {
         $out = [$heading];
         foreach ($tasks as $task) {
             $due = Hastan_DB::utc_to_local($task['due_at']);
-            $out[] = '— ' . $task['title'] . ($due ? ' (до ' . $due->format('d.m H:i') . ')' : '');
+            $out[] = '— ' . $task['title'] . ($due ? ' (до ' . $due->format('d.m') . ')' : '');
             foreach (Hastan_DB::items((int) $task['id']) as $item) {
                 if ($item['status'] === 'open') {
                     $out[] = '   · ' . $item['title'];

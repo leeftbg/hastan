@@ -129,16 +129,6 @@ class Hastan_DB
         ), ARRAY_A);
     }
 
-    /** Open tasks whose deadline falls before $until_utc and that were not reminded yet. */
-    public static function due_unreminded(string $until_utc): array
-    {
-        global $wpdb;
-        return $wpdb->get_results($wpdb->prepare(
-            'SELECT * FROM ' . self::tasks_table() . " WHERE parent_id = 0 AND status = 'open' AND due_at IS NOT NULL AND due_at <= %s AND reminded_at IS NULL",
-            $until_utc
-        ), ARRAY_A);
-    }
-
     /** Closes the task when every checklist item is done. */
     public static function maybe_close_parent(int $task_id): bool
     {
@@ -196,9 +186,7 @@ class Hastan_DB
         } catch (Exception $e) {
             return null;
         }
-        if (!preg_match('/\d{1,2}:\d{2}/', $local)) {
-            $dt = $dt->setTime(18, 0);
-        }
+        $dt = $dt->setTime(12, 0); // Deadlines are whole days; the time is ignored.
         return $dt->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
     }
 

@@ -23,7 +23,6 @@ class Hastan_Settings
             'effort' => 'low',
             'morning_time' => '10:00',
             'evening_time' => '20:00',
-            'remind_before_hours' => 2,
             'about' => 'Я веду SMM клуба: посты в Instagram и Facebook, новости на сайте, монтаж видео, реклама в Meta.',
         ];
     }

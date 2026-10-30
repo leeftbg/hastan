@@ -154,9 +154,16 @@ class Hastan_Telegram
             return;
         }
 
-        self::api('sendChatAction', ['chat_id' => $chat_id, 'action' => 'typing']);
+        // A like shows the message arrived; text follows only when there is something to say.
+        self::api('setMessageReaction', [
+            'chat_id' => $chat_id,
+            'message_id' => $message['message_id'],
+            'reaction' => [['type' => 'emoji', 'emoji' => '👍']],
+        ]);
         $reply = Hastan_Brain::reply($text);
-        self::send($reply);
+        if (!in_array(mb_strtolower(trim($reply, " \n.!")), ['', 'ок', 'ok'], true)) {
+            self::send($reply);
+        }
     }
 
     private static function link_chat(string $chat_id, string $code): void
@@ -196,10 +203,11 @@ class Hastan_Telegram
             }
             $note = "Отмечено как сделанное: {$task['title']}";
         } elseif ($action === 'tomorrow') {
-            $due = Hastan_DB::utc_to_local($task['due_at']) ?? Hastan_Settings::now()->setTime(18, 0);
-            $new = max($due->modify('+1 day'), Hastan_Settings::now()->modify('+1 day')->setTime((int) $due->format('H'), (int) $due->format('i')));
-            Hastan_DB::update_task((int) $id, ['due_at' => $new->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s')]);
-            $note = "Перенесено на завтра, {$new->format('d.m H:i')}: {$task['title']}";
+            $tomorrow = Hastan_Settings::now()->modify('+1 day');
+            $due = Hastan_DB::utc_to_local($task['due_at']);
+            $new = $due && $due->modify('+1 day') > $tomorrow ? $due->modify('+1 day') : $tomorrow;
+            Hastan_DB::update_task((int) $id, ['due_at' => Hastan_DB::local_to_utc($new->format('Y-m-d'))]);
+            $note = "Перенесено на {$new->format('d.m')}: {$task['title']}";
         } else {
             return;
         }
