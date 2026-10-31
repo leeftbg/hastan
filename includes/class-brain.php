@@ -33,11 +33,11 @@ class Hastan_Brain
     }
 
     /** Answers a message from the user and keeps it in the chat log. */
-    public static function reply(string $text): string
+    public static function reply(string $text, ?array $image = null): string
     {
         $history = Hastan_DB::recent_log();
-        Hastan_DB::log('user', $text);
-        $answer = self::run($history, $text);
+        Hastan_DB::log('user', $image ? "[фото] {$text}" : $text);
+        $answer = self::run($history, $text, true, $image);
         Hastan_DB::log('assistant', $answer);
         return $answer;
     }
@@ -60,7 +60,7 @@ class Hastan_Brain
      * One conversation turn with the tool loop. Returns the text answer; on
      * failure returns an error line for the user, or null when $fail_soft is false.
      */
-    private static function run(array $history, string $text, bool $fail_soft = true): ?string
+    private static function run(array $history, string $text, bool $fail_soft = true, ?array $image = null): ?string
     {
         if (!Hastan_Settings::get('anthropic_key')) {
             return $fail_soft ? 'Не задан ключ Claude API. Откройте в WordPress: Hastan → Настройки.' : null;
@@ -71,6 +71,13 @@ class Hastan_Brain
             self::append($messages, $row['role'], $row['content']);
         }
         self::append($messages, 'user', self::context() . "\n\n" . $text);
+        if ($image) {
+            $last = count($messages) - 1;
+            $messages[$last]['content'] = [
+                ['type' => 'image', 'source' => ['type' => 'base64', 'mediaType' => $image[0], 'data' => $image[1]]],
+                ['type' => 'text', 'text' => $messages[$last]['content']],
+            ];
+        }
 
         try {
             for ($round = 0; $round < self::MAX_TOOL_ROUNDS; $round++) {
@@ -156,6 +163,7 @@ class Hastan_Brain
 - Новое событие (вечеринка, форум, концерт и т.п.) — это задача с шаблоном event: проект lotus, срок = дата события, название «Название события д.м». Её пункты: пост, сторис, Reels, реклама, событие на сайте. Отмечай пункт, как только пользователь упомянул, что он готов, или перешёл к следующему; про публикацию не переспрашивай.
 - Дополнительную работу по уже заведённому событию (ещё один Reels, ещё реклама) записывай, только если пользователь прямо просит, и без напоминаний.
 - Проекты сайта ({$site}): задачи без сроков.
+- Привычки — личное, отдельно от работы. Если пользователь говорит, что сделал что-то из привычек (например «шея, силовые»), отметь через mark_habits на сегодня или на названный день. Если прислано фото бумажной таблицы привычек, перенеси все закрашенные клетки через mark_habits (даты в таблице — дд.мм, год текущий). Не хвали, не комментируй и не уговаривай: ответ «ок». Сам про привычки не спрашивай.
 - Если пользователь делится идеей на любую тему, а не задачей («идея:», «пришло в голову», «а что если»), сохрани её инструментом save_idea и не создавай задач. Оформи аккуратно, но ничего не добавляй от себя.
 - Когда пользователь говорит о другой новой работе, создай задачу инструментом add_task. Срок — только день, без часов. «К пятнице» значит ближайшая пятница.
 - Если работа похожа на шаблон, укажи его, и чек-лист добавится сам. Шаблоны:
@@ -181,6 +189,7 @@ PROMPT;
         $days = ['воскресенье', 'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота'];
         $lines = ['[Состояние на сейчас: ' . $days[(int) $now->format('w')] . ', ' . $now->format('d.m.Y H:i') . ']'];
         $lines[] = self::render_tasks(Hastan_DB::open_tasks(), 'Открытые задачи');
+        $lines[] = Hastan_Habits::describe($now);
         $done = Hastan_DB::recently_done(24);
         if ($done) {
             $lines[] = self::render_tasks($done, 'Сделано за последние сутки');
@@ -262,6 +271,31 @@ PROMPT;
                         'done' => ['type' => 'boolean'],
                     ],
                     'required' => ['item_ids', 'done'],
+                    'additionalProperties' => false,
+                ],
+            ],
+            [
+                'name' => 'mark_habits',
+                'description' => 'Отмечает привычки сделанными (done=true) или снимает отметку (done=false) в указанные дни.',
+                'strict' => true,
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'marks' => [
+                            'type' => 'array',
+                            'items' => [
+                                'type' => 'object',
+                                'properties' => [
+                                    'habit_id' => ['type' => 'integer'],
+                                    'date' => ['type' => 'string', 'description' => 'YYYY-MM-DD'],
+                                ],
+                                'required' => ['habit_id', 'date'],
+                                'additionalProperties' => false,
+                            ],
+                        ],
+                        'done' => ['type' => 'boolean'],
+                    ],
+                    'required' => ['marks', 'done'],
                     'additionalProperties' => false,
                 ],
             ],
@@ -423,6 +457,17 @@ PROMPT;
                     }
                 }
                 return $closed ? 'Готово. Задачи закрыты целиком: ' . implode(', ', $closed) : 'Готово.';
+
+            case 'mark_habits':
+                $count = 0;
+                foreach ((array) ($input['marks'] ?? []) as $mark) {
+                    $date = (string) ($mark['date'] ?? '');
+                    if (Hastan_Habits::get((int) ($mark['habit_id'] ?? 0)) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+                        Hastan_Habits::mark((int) $mark['habit_id'], $date, !empty($input['done']));
+                        $count++;
+                    }
+                }
+                return "Готово, отметок: {$count}.";
 
             case 'save_idea':
                 if (trim((string) ($input['title'] ?? '')) === '' || trim((string) ($input['body'] ?? '')) === '') {

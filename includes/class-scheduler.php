@@ -80,6 +80,10 @@ class Hastan_Scheduler
         if ($idle >= (int) Hastan_Settings::get('site_idle_hours') * HOUR_IN_SECONDS) {
             $out[] = '— Сайтом не занимались ' . floor($idle / DAY_IN_SECONDS) . ' дн.';
         }
+        $lapses = Hastan_Habits::lapses($now);
+        if ($lapses) {
+            $out[] = '— Давно не было: ' . implode(', ', $lapses);
+        }
         $out = array_merge($out, self::inconsistencies());
         if ($out) {
             Hastan_Telegram::send("Доброе утро!\n\n" . implode("\n", $out));
@@ -96,6 +100,9 @@ class Hastan_Scheduler
         $lines = self::event_lines(array_filter(self::events($now), fn ($t) => $t['due_at'] <= $until));
         if ($lines) {
             Hastan_Telegram::send("Не забыть:\n" . implode("\n", $lines));
+        }
+        if (Hastan_Habits::all()) {
+            Hastan_Telegram::send('Сегодня, ' . $now->format('d.m'), Hastan_Habits::buttons($now->format('Y-m-d')));
         }
     }
 

@@ -63,14 +63,37 @@ class Hastan_Telegram
         foreach ($chunks as $i => $chunk) {
             $params = ['chat_id' => $chat_id, 'text' => $chunk, 'link_preview_options' => ['is_disabled' => true]];
             if ($buttons && $i === count($chunks) - 1) {
-                $params['reply_markup'] = ['inline_keyboard' => array_map(
-                    fn ($row) => array_map(fn ($b) => ['text' => $b[0], 'callback_data' => $b[1]], $row),
-                    $buttons
-                )];
+                $params['reply_markup'] = self::keyboard($buttons);
             }
             $ok = self::api('sendMessage', $params) !== null && $ok;
         }
         return $ok;
+    }
+
+    /** Rows of [text, callback_data] pairs → an inline keyboard. */
+    public static function keyboard(array $buttons): array
+    {
+        return ['inline_keyboard' => array_map(
+            fn ($row) => array_map(fn ($b) => ['text' => $b[0], 'callback_data' => $b[1]], $row),
+            $buttons
+        )];
+    }
+
+    /** Downloads the largest size of a Telegram photo as [media_type, base64], or null. */
+    private static function photo(array $sizes): ?array
+    {
+        $file = self::api('getFile', ['file_id' => end($sizes)['file_id'] ?? '']);
+        if (empty($file['file_path'])) {
+            return null;
+        }
+        $token = Hastan_Settings::get('telegram_token');
+        $response = wp_remote_get("https://api.telegram.org/file/bot{$token}/{$file['file_path']}", ['timeout' => 30]);
+        if (is_wp_error($response) || wp_remote_retrieve_response_code($response) !== 200) {
+            return null;
+        }
+        $ext = strtolower(pathinfo($file['file_path'], PATHINFO_EXTENSION));
+        $type = ['png' => 'image/png', 'webp' => 'image/webp', 'gif' => 'image/gif'][$ext] ?? 'image/jpeg';
+        return [$type, base64_encode(wp_remote_retrieve_body($response))];
     }
 
     private static function split(string $text, int $size): array
@@ -150,7 +173,12 @@ class Hastan_Telegram
             self::send('Голосовые я пока не понимаю. Нажмите микрофон на клавиатуре телефона и надиктуйте текстом — так сработает.');
             return;
         }
-        if ($text === '') {
+        $image = isset($message['photo']) ? self::photo($message['photo']) : null;
+        if (isset($message['photo']) && !$image) {
+            self::send('Не получилось скачать фото, пришлите ещё раз.');
+            return;
+        }
+        if ($text === '' && !$image) {
             return;
         }
 
@@ -160,7 +188,7 @@ class Hastan_Telegram
             'message_id' => $message['message_id'],
             'reaction' => [['type' => 'emoji', 'emoji' => '👍']],
         ]);
-        $reply = Hastan_Brain::reply($text);
+        $reply = Hastan_Brain::reply($text !== '' ? $text : '[фото без подписи]', $image);
         if (!in_array(mb_strtolower(trim($reply, " \n.!")), ['', 'ок', 'ok'], true)) {
             self::send($reply);
         }
@@ -188,6 +216,10 @@ class Hastan_Telegram
             return;
         }
         [$action, $id] = array_pad(explode(':', (string) ($cb['data'] ?? ''), 2), 2, '');
+        if ($action === 'habit') {
+            self::toggle_habit($cb, $id);
+            return;
+        }
         $task = Hastan_DB::get_task((int) $id);
         if (!$task) {
             self::api('answerCallbackQuery', ['callback_query_id' => $cb['id'], 'text' => 'Задача не найдена']);
@@ -210,6 +242,24 @@ class Hastan_Telegram
         self::api('answerCallbackQuery', ['callback_query_id' => $cb['id'], 'text' => $note]);
         Hastan_DB::log('user', "[кнопка] {$note}");
         self::send($note);
+    }
+
+    /** A tap on a habit square: colour it or clear it, in place. */
+    private static function toggle_habit(array $cb, string $data): void
+    {
+        [$habit_id, $day] = array_pad(explode(':', $data, 2), 2, '');
+        $habit = Hastan_Habits::get((int) $habit_id);
+        if (!$habit || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $day)) {
+            self::api('answerCallbackQuery', ['callback_query_id' => $cb['id']]);
+            return;
+        }
+        Hastan_Habits::mark((int) $habit_id, $day, !Hastan_Habits::is_done((int) $habit_id, $day));
+        self::api('answerCallbackQuery', ['callback_query_id' => $cb['id']]);
+        self::api('editMessageReplyMarkup', [
+            'chat_id' => $cb['message']['chat']['id'],
+            'message_id' => $cb['message']['message_id'],
+            'reply_markup' => self::keyboard(Hastan_Habits::buttons($day)),
+        ]);
     }
 
     /** One row of buttons for a task. */

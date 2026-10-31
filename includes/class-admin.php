@@ -4,7 +4,7 @@ if (!defined('ABSPATH')) {
 }
 
 /**
- * WordPress admin: the task board, the ideas and the settings page.
+ * WordPress admin: the task board, habits, ideas and the settings page.
  */
 class Hastan_Admin
 {
@@ -14,12 +14,15 @@ class Hastan_Admin
         add_action('admin_post_hastan_settings', [self::class, 'save_settings']);
         add_action('admin_post_hastan_action', [self::class, 'handle_action']);
         add_action('admin_post_hastan_idea', [self::class, 'handle_idea']);
+        add_action('admin_post_hastan_habit_toggle', [self::class, 'toggle_habit']);
+        add_action('admin_post_hastan_habits', [self::class, 'save_habits']);
     }
 
     public static function menu(): void
     {
         add_menu_page('Hastan', 'Hastan', 'manage_options', 'hastan', [self::class, 'board_page'], 'dashicons-yes-alt', 3);
         add_submenu_page('hastan', 'Задачи', 'Задачи', 'manage_options', 'hastan', [self::class, 'board_page']);
+        add_submenu_page('hastan', 'Привычки', 'Привычки', 'manage_options', 'hastan-habits', [self::class, 'habits_page']);
         add_submenu_page('hastan', 'Идеи', 'Идеи', 'manage_options', 'hastan-ideas', [self::class, 'ideas_page']);
         add_submenu_page('hastan', 'Настройки Hastan', 'Настройки', 'manage_options', 'hastan-settings', [self::class, 'settings_page']);
     }
@@ -43,6 +46,100 @@ class Hastan_Admin
         if (!empty($_GET['hastan_notice'])) {
             echo '<div class="notice notice-info is-dismissible"><p>' . esc_html(wp_unslash($_GET['hastan_notice'])) . '</p></div>';
         }
+    }
+
+    /* ---------- habits ---------- */
+
+    /** The paper table: days down, habits across, squares coloured red and black. */
+    public static function habits_page(): void
+    {
+        $habits = Hastan_Habits::all();
+        $today = Hastan_Settings::now()->setTime(0, 0);
+        $days = [];
+        for ($i = 27; $i >= 0; $i--) {
+            $days[] = $today->modify("-{$i} days");
+        }
+        $marks = Hastan_Habits::marks($days[0]->format('Y-m-d'), $today->format('Y-m-d'));
+        echo '<div class="wrap"><h1>Hastan: привычки</h1>';
+        self::notice();
+        echo '<style>.hastan-sheet{background:#fff;padding:24px 28px;display:inline-block;border-radius:4px;box-shadow:0 1px 3px rgba(0,0,0,.12);overflow-x:auto;max-width:100%}
+.hastan-grid{border-collapse:collapse;font-family:"Segoe Print","Comic Sans MS",cursive}
+.hastan-grid th{height:150px;vertical-align:bottom;padding:0 0 6px;font-weight:400;font-size:13px}
+.hastan-grid th span{writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap}
+.hastan-grid td{width:26px;height:22px;border:1px solid #b9c6d3;padding:0}.hastan-grid td.d{border:0;padding-right:8px;text-align:right;font-size:13px;width:auto;white-space:nowrap}
+.hastan-grid td a{display:block;width:100%;height:100%}.hastan-grid td.r{background:#d7262e}.hastan-grid td.b{background:#1b1b1f}
+.hastan-grid tr.today td.d{font-weight:700}
+.hastan-habits-form td{padding:4px 8px 4px 0}</style>';
+        if ($habits) {
+            echo '<div class="hastan-sheet"><table class="hastan-grid"><tr><th></th>';
+            foreach ($habits as $habit) {
+                echo '<th><span>' . esc_html($habit['name']) . '</span></th>';
+            }
+            echo '</tr>';
+            foreach ($days as $r => $day) {
+                $key = $day->format('Y-m-d');
+                echo '<tr' . ($key === $today->format('Y-m-d') ? ' class="today"' : '') . '><td class="d">' . esc_html($day->format('d.m')) . '</td>';
+                foreach ($habits as $c => $habit) {
+                    $done = !empty($marks[(int) $habit['id']][$key]);
+                    $url = wp_nonce_url(admin_url('admin-post.php?action=hastan_habit_toggle&habit=' . (int) $habit['id'] . '&day=' . $key), 'hastan_habit_toggle');
+                    echo '<td' . ($done ? ' class="' . (($r + $c) % 2 ? 'b' : 'r') . '"' : '') . '><a href="' . esc_url($url) . '" title="' . esc_attr($habit['name'] . ', ' . $day->format('d.m')) . '"></a></td>';
+                }
+                echo '</tr>';
+            }
+            echo '</table></div>';
+            echo '<p class="description">Нажмите на клетку, чтобы закрасить или стереть. Отмечать можно и в Telegram: кнопками в вечернем сообщении, словами («шея, силовые») или фото бумажной таблицы.</p>';
+        }
+
+        echo '<h2>Список и ритм</h2><p class="description">Ритм — не реже чем раз в столько дней. Если привычка выпадет из ритма, утром придёт одна строка «давно не было», один раз.</p>';
+        echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '">';
+        wp_nonce_field('hastan_habits');
+        echo '<input type="hidden" name="action" value="hastan_habits"><table class="hastan-habits-form"><tr><th>Привычка</th><th>Ритм, дней</th><th>Удалить</th></tr>';
+        foreach (Hastan_Habits::all() as $habit) {
+            $id = (int) $habit['id'];
+            echo '<tr><td><input type="text" name="habit[' . $id . '][name]" value="' . esc_attr($habit['name']) . '" class="regular-text"></td>'
+                . '<td><input type="number" min="1" max="60" name="habit[' . $id . '][every_days]" value="' . (int) $habit['every_days'] . '" style="width:70px"></td>'
+                . '<td><input type="checkbox" name="habit[' . $id . '][delete]" value="1"></td></tr>';
+        }
+        echo '<tr><td><input type="text" name="new[name]" placeholder="Новая привычка" class="regular-text"></td>'
+            . '<td><input type="number" min="1" max="60" name="new[every_days]" value="2" style="width:70px"></td><td></td></tr></table>';
+        echo '<p><button class="button button-primary">Сохранить</button></p></form></div>';
+    }
+
+    public static function toggle_habit(): void
+    {
+        if (!current_user_can('manage_options')) {
+            wp_die('Нет доступа');
+        }
+        check_admin_referer('hastan_habit_toggle');
+        $id = (int) ($_GET['habit'] ?? 0);
+        $day = (string) ($_GET['day'] ?? '');
+        if (Hastan_Habits::get($id) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $day)) {
+            Hastan_Habits::mark($id, $day, !Hastan_Habits::is_done($id, $day));
+        }
+        self::back('hastan-habits');
+    }
+
+    public static function save_habits(): void
+    {
+        self::check('hastan_habits');
+        $position = 0;
+        foreach ((array) ($_POST['habit'] ?? []) as $id => $row) {
+            $row = wp_unslash($row);
+            if (!empty($row['delete'])) {
+                Hastan_Habits::delete((int) $id);
+                continue;
+            }
+            $name = sanitize_text_field($row['name'] ?? '');
+            if ($name !== '') {
+                Hastan_Habits::save(['name' => $name, 'every_days' => (int) ($row['every_days'] ?? 1), 'position' => $position++], (int) $id);
+            }
+        }
+        $new = wp_unslash((array) ($_POST['new'] ?? []));
+        $name = sanitize_text_field($new['name'] ?? '');
+        if ($name !== '') {
+            Hastan_Habits::save(['name' => $name, 'every_days' => (int) ($new['every_days'] ?? 1), 'position' => $position]);
+        }
+        self::back('hastan-habits', 'Сохранено.');
     }
 
     /* ---------- ideas ---------- */
