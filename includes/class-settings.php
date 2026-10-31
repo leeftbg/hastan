@@ -23,6 +23,8 @@ class Hastan_Settings
             'effort' => 'low',
             'morning_time' => '10:00',
             'evening_time' => '20:00',
+            'site_projects' => 'lotus site, бронирование',
+            'site_idle_hours' => 72,
             'about' => 'Я веду SMM клуба: посты в Instagram и Facebook, новости на сайте, монтаж видео, реклама в Meta.',
         ];
     }
@@ -60,6 +62,18 @@ class Hastan_Settings
         if ($changes) {
             self::set($changes);
         }
+    }
+
+    /** Projects about the website: no deadlines, only a nudge after a long break. */
+    public static function site_projects(): array
+    {
+        $names = array_map(fn ($p) => mb_strtolower(trim($p)), explode(',', (string) self::get('site_projects')));
+        return array_values(array_filter($names, 'strlen'));
+    }
+
+    public static function is_site_project(?string $project): bool
+    {
+        return $project !== null && in_array(mb_strtolower(trim($project)), self::site_projects(), true);
     }
 
     /** Current local time in the site's timezone. */

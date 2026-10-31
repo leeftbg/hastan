@@ -67,71 +67,75 @@ class Hastan_Scheduler
     }
 
     /**
-     * 10:00: tasks due today and tomorrow. Overdue tasks are not repeated:
-     * they were already in yesterday's messages.
+     * 10:00: unfinished checklist items of upcoming events, a nudge when the
+     * site has been idle too long, and gross inconsistencies in one line each.
      */
     public static function morning(DateTimeImmutable $now, bool $force = false): void
     {
         if (!$force && !self::due_now($now, (string) Hastan_Settings::get('morning_time'), 'hastan_last_morning')) {
             return;
         }
-        $today = self::due_on($now);
-        $tomorrow = self::due_on($now->modify('+1 day'));
-        if (!$today && !$tomorrow) {
-            return;
+        $out = self::event_lines(self::events($now));
+        $idle = time() - (int) get_option('hastan_site_activity', time());
+        if ($idle >= (int) Hastan_Settings::get('site_idle_hours') * HOUR_IN_SECONDS) {
+            $out[] = '— Сайтом не занимались ' . floor($idle / DAY_IN_SECONDS) . ' дн.';
         }
-        $out = ['Доброе утро!'];
-        if ($today) {
-            $out[] = "\nСегодня:\n" . self::titles($today);
+        $out = array_merge($out, self::inconsistencies());
+        if ($out) {
+            Hastan_Telegram::send("Доброе утро!\n\n" . implode("\n", $out));
         }
-        if ($tomorrow) {
-            $out[] = "\nЗавтра:\n" . self::titles($tomorrow);
-        }
-        Hastan_Telegram::send(implode("\n", $out));
     }
 
-    /** 20:00: what is due today and still open, with buttons. */
+    /** 20:00: events today or tomorrow that still have something undone. */
     public static function evening(DateTimeImmutable $now, bool $force = false): void
     {
         if (!$force && !self::due_now($now, (string) Hastan_Settings::get('evening_time'), 'hastan_last_evening')) {
             return;
         }
-        $tasks = self::due_on($now);
-        if (!$tasks) {
-            return;
+        $until = $now->modify('+1 day')->setTime(23, 59, 59)->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
+        $lines = self::event_lines(array_filter(self::events($now), fn ($t) => $t['due_at'] <= $until));
+        if ($lines) {
+            Hastan_Telegram::send("Не забыть:\n" . implode("\n", $lines));
         }
-        Hastan_Telegram::send(
-            "Сегодня не закрыто:\n" . self::titles($tasks),
-            array_map([Hastan_Telegram::class, 'task_buttons'], array_slice($tasks, 0, 8))
-        );
     }
 
-    /** Open tasks whose deadline is on the given local day. */
-    private static function due_on(DateTimeImmutable $day): array
+    /** Open events that have not passed yet. */
+    private static function events(DateTimeImmutable $now): array
     {
-        $utc = new DateTimeZone('UTC');
-        $from = $day->setTime(0, 0)->setTimezone($utc)->format('Y-m-d H:i:s');
-        $to = $day->setTime(23, 59, 59)->setTimezone($utc)->format('Y-m-d H:i:s');
+        $from = $now->setTime(0, 0)->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
         return array_values(array_filter(
             Hastan_DB::open_tasks(),
-            fn ($t) => $t['due_at'] !== null && $t['due_at'] >= $from && $t['due_at'] <= $to
+            fn ($t) => $t['template'] === 'event' && $t['due_at'] !== null && $t['due_at'] >= $from
         ));
     }
 
-    /** Task titles only, grouped by project. */
-    private static function titles(array $tasks): string
+    /** "— Greek party 6.11: сторис, событие на сайте" for each event with open items. */
+    private static function event_lines(array $events): array
     {
-        $groups = [];
-        foreach ($tasks as $task) {
-            $groups[$task['project'] !== '' ? $task['project'] : ''][] = '— ' . $task['title'];
-        }
         $out = [];
-        foreach ($groups as $project => $lines) {
-            if (count($groups) > 1 && $project !== '') {
-                $out[] = mb_strtoupper(mb_substr($project, 0, 1)) . mb_substr($project, 1) . ':';
+        foreach ($events as $event) {
+            $open = array_filter(
+                Hastan_DB::items((int) $event['id']),
+                fn ($i) => $i['status'] === 'open' && !(int) $i['optional']
+            );
+            if ($open) {
+                $out[] = '— ' . $event['title'] . ': ' . implode(', ', array_column($open, 'title'));
             }
-            array_push($out, ...$lines);
         }
-        return implode("\n", $out);
+        return $out;
+    }
+
+    /** Only lines starting with ❗, so the AI cannot add advice or comments. */
+    private static function inconsistencies(): array
+    {
+        $text = Hastan_Brain::compose(
+            'Проверь заметки и названия открытых задач на грубые несоответствия фактов: разные даты, время или цены одного и того же события. '
+            . 'Каждое найденное — одна строка, начинается с ❗, только факт, например «❗ Маскарад: в постах 20:00 и 21:00». '
+            . 'Ничего не советуй, не проверяй, что сделано, не пиши ничего, кроме таких строк. Если несоответствий нет, ответь пустой строкой.'
+        );
+        return array_values(array_filter(
+            array_map('trim', explode("\n", (string) $text)),
+            fn ($line) => str_starts_with($line, '❗')
+        ));
     }
 }

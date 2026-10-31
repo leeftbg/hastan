@@ -9,7 +9,7 @@ if (!defined('ABSPATH')) {
  */
 class Hastan_DB
 {
-    const VERSION = '3';
+    const VERSION = '4';
 
     public static function tasks_table(): string
     {
@@ -59,6 +59,16 @@ class Hastan_DB
   PRIMARY KEY  (id)
 ) $charset;");
 
+        $old = (int) get_option('hastan_db_version');
+        if ($old && $old < 4) {
+            // Site work has no deadlines any more.
+            foreach (self::open_tasks() as $task) {
+                if (Hastan_Settings::is_site_project($task['project'])) {
+                    $wpdb->update($tasks, ['due_at' => null], ['id' => (int) $task['id']]);
+                }
+            }
+        }
+        add_option('hastan_site_activity', time(), '', false);
         update_option('hastan_db_version', self::VERSION, false);
     }
 

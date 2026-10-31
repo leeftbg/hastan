@@ -143,6 +143,7 @@ class Hastan_Brain
     {
         $about = (string) Hastan_Settings::get('about');
         $templates = Hastan_Templates::describe();
+        $site = implode(', ', Hastan_Settings::site_projects());
         return <<<PROMPT
 Ты Hastan, личный помощник по работе. Ты общаешься с пользователем в Telegram и ведёшь его задачи, чтобы он ничего не забывал.
 
@@ -151,8 +152,11 @@ class Hastan_Brain
 Главное правило: пользователь не ведёт органайзер. Он пишет как живому коллеге, а ты сам превращаешь это в задачи, сроки и чек-листы и сам следишь за ними.
 
 Как работать:
-- Когда пользователь говорит о новой работе, сразу создай задачу инструментом add_task. Не переспрашивай то, что можно разумно предположить: «к пятнице» значит ближайшая пятница.
-- Срок — это только день, без часов. Никогда не назначай время и не обещай напомнить в какой-то час: напоминания приходят только утром и вечером.
+- Напоминания приходят сами только про две вещи: незакрытые пункты чек-листа событий и долгий перерыв в работе над сайтом. Ничего другого не обещай напоминать.
+- Новое событие (вечеринка, форум, концерт и т.п.) — это задача с шаблоном event: проект lotus, срок = дата события, название «Название события д.м». Её пункты: пост, сторис, Reels, реклама, событие на сайте. Отмечай их, когда пользователь говорит, что сделал.
+- Дополнительную работу по уже заведённому событию (ещё один Reels, ещё реклама) записывай, только если пользователь прямо просит, и без напоминаний.
+- Проекты сайта ({$site}): задачи без сроков.
+- Когда пользователь говорит о другой новой работе, создай задачу инструментом add_task. Срок — только день, без часов. «К пятнице» значит ближайшая пятница.
 - Если работа похожа на шаблон, укажи его, и чек-лист добавится сам. Шаблоны:
 {$templates}
 - Если пользователь говорит, что что-то сделал, найди это в списке задач и отметь инструментом update_items или update_task. Если не ясно, о каком пункте речь, уточни одним коротким вопросом.
@@ -290,9 +294,26 @@ PROMPT;
         return ['type' => 'tool_result', 'toolUseID' => $id, 'content' => $content, 'isError' => $error];
     }
 
+    /** The project a tool call is about: named directly or through its task. */
+    private static function project_of(array $input): ?string
+    {
+        if (!empty($input['project'])) {
+            return (string) $input['project'];
+        }
+        $id = (int) ($input['id'] ?? $input['task_id'] ?? ($input['item_ids'][0] ?? 0));
+        $task = $id ? Hastan_DB::get_task($id) : null;
+        if ($task && (int) $task['parent_id']) {
+            $task = Hastan_DB::get_task((int) $task['parent_id']);
+        }
+        return $task['project'] ?? null;
+    }
+
     /** Runs a tool and returns its result as text for Claude. */
     public static function execute(string $name, array $input, string $source = 'telegram'): string
     {
+        if (Hastan_Settings::is_site_project(self::project_of($input))) {
+            update_option('hastan_site_activity', time(), false); // Someone is working on the site.
+        }
         switch ($name) {
             case 'list_tasks':
                 $project = trim((string) ($input['project'] ?? ''));
@@ -315,7 +336,7 @@ PROMPT;
                     'title' => $title,
                     'notes' => $input['notes'] ?? null,
                     'template' => $template ?? '',
-                    'due_at' => Hastan_DB::local_to_utc($input['due'] ?? null),
+                    'due_at' => Hastan_Settings::is_site_project($input['project'] ?? null) ? null : Hastan_DB::local_to_utc($input['due'] ?? null),
                     'project' => trim((string) ($input['project'] ?? '')),
                     'source' => $source,
                 ]);
@@ -342,7 +363,7 @@ PROMPT;
                     }
                     $fields['status'] = $input['status'];
                 }
-                if (!empty($input['due'])) {
+                if (!empty($input['due']) && !Hastan_Settings::is_site_project(self::project_of(['id' => $task['id']]))) {
                     $fields['due_at'] = Hastan_DB::local_to_utc($input['due']);
                 }
                 if (!empty($input['title'])) {

@@ -13,6 +13,16 @@ class Hastan_Templates
     public static function defaults(): array
     {
         return [
+            'event' => [
+                'name' => 'Событие',
+                'items' => [
+                    'Пост',
+                    'Сторис',
+                    'Reels',
+                    'Реклама',
+                    'Событие на сайте',
+                ],
+            ],
             'post' => [
                 'name' => 'Пост',
                 'items' => [
@@ -56,7 +66,7 @@ class Hastan_Templates
     public static function all(): array
     {
         $saved = get_option(self::OPTION);
-        return is_array($saved) && $saved ? $saved : self::defaults();
+        return is_array($saved) && $saved ? $saved + self::defaults() : self::defaults();
     }
 
     public static function get(string $key): ?array

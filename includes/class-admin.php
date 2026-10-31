@@ -192,6 +192,8 @@ class Hastan_Admin
         self::field('Глубина размышлений', '<select name="effort">' . $effort . '</select>');
         self::field('Утренний план', '<input type="time" name="morning_time" value="' . esc_attr($s['morning_time']) . '">');
         self::field('Вечерняя проверка', '<input type="time" name="evening_time" value="' . esc_attr($s['evening_time']) . '">');
+        self::field('Проекты сайта', '<input type="text" name="site_projects" value="' . esc_attr($s['site_projects']) . '" class="regular-text"><p class="description">Через запятую. У задач этих проектов нет сроков; если по ним долго нет работы, утром придёт напоминание.</p>');
+        self::field('Напомнить про сайт после, часов', '<input type="number" min="24" max="720" name="site_idle_hours" value="' . (int) $s['site_idle_hours'] . '">');
         self::field('О вас и вашей работе', '<textarea name="about" rows="3" class="large-text">' . esc_textarea($s['about']) . '</textarea><p class="description">Помощник учитывает это в ответах и идеях.</p>');
         foreach (Hastan_Templates::all() as $key => $tpl) {
             self::field('Шаблон «' . esc_html($tpl['name']) . '»', '<textarea name="tpl_' . esc_attr($key) . '" rows="6" class="large-text">' . esc_textarea(implode("\n", $tpl['items'])) . '</textarea><p class="description">Один пункт чек-листа на строку.</p>');
@@ -236,11 +238,11 @@ class Hastan_Admin
                 // no break
             case 'test_morning':
                 Hastan_Scheduler::morning($now, true);
-                self::back('hastan-settings', 'Утренний план отправлен (если есть открытые задачи).');
+                self::back('hastan-settings', 'Утреннее сообщение отправлено (если было что сказать).');
                 // no break
             case 'test_evening':
                 Hastan_Scheduler::evening($now, true);
-                self::back('hastan-settings', 'Вечерняя проверка отправлена (если есть задачи со сроком на сегодня).');
+                self::back('hastan-settings', 'Вечернее сообщение отправлено (если у событий на сегодня-завтра что-то не сделано).');
                 // no break
             case 'save':
                 $values = [
@@ -249,6 +251,8 @@ class Hastan_Admin
                     'morning_time' => preg_match('/^\d{2}:\d{2}$/', $_POST['morning_time'] ?? '') ? $_POST['morning_time'] : '10:00',
                     'evening_time' => preg_match('/^\d{2}:\d{2}$/', $_POST['evening_time'] ?? '') ? $_POST['evening_time'] : '20:00',
                     'about' => sanitize_textarea_field(wp_unslash($_POST['about'] ?? '')),
+                    'site_projects' => sanitize_text_field(wp_unslash($_POST['site_projects'] ?? '')),
+                    'site_idle_hours' => max(24, min(720, (int) ($_POST['site_idle_hours'] ?? 72))),
                 ];
                 foreach (['telegram_token', 'anthropic_key'] as $secret) {
                     $value = trim(sanitize_text_field(wp_unslash($_POST[$secret] ?? '')));
