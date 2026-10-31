@@ -9,7 +9,7 @@ if (!defined('ABSPATH')) {
  */
 class Hastan_DB
 {
-    const VERSION = '4';
+    const VERSION = '5';
 
     public static function tasks_table(): string
     {
@@ -21,6 +21,12 @@ class Hastan_DB
     {
         global $wpdb;
         return $wpdb->prefix . 'hastan_log';
+    }
+
+    public static function ideas_table(): string
+    {
+        global $wpdb;
+        return $wpdb->prefix . 'hastan_ideas';
     }
 
     public static function install(): void
@@ -48,6 +54,19 @@ class Hastan_DB
   created_at datetime NOT NULL,
   PRIMARY KEY  (id),
   KEY parent_id (parent_id),
+  KEY status (status)
+) $charset;");
+
+        $ideas = self::ideas_table();
+        dbDelta("CREATE TABLE $ideas (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  title varchar(200) NOT NULL,
+  topic varchar(60) NOT NULL DEFAULT '',
+  body text NOT NULL,
+  original text NULL,
+  status varchar(20) NOT NULL DEFAULT 'new',
+  created_at datetime NOT NULL,
+  PRIMARY KEY  (id),
   KEY status (status)
 ) $charset;");
 
@@ -194,6 +213,44 @@ class Hastan_DB
             $limit
         ), ARRAY_A);
         return array_reverse($rows);
+    }
+
+    /* ---------- ideas ---------- */
+
+    public static function add_idea(array $data): int
+    {
+        global $wpdb;
+        $wpdb->insert(self::ideas_table(), [
+            'title' => mb_substr((string) $data['title'], 0, 200),
+            'topic' => mb_substr((string) ($data['topic'] ?? ''), 0, 60),
+            'body' => (string) $data['body'],
+            'original' => $data['original'] ?? null,
+            'status' => 'new',
+            'created_at' => gmdate('Y-m-d H:i:s'),
+        ]);
+        return (int) $wpdb->insert_id;
+    }
+
+    /** Ideas with the given status, newest first. */
+    public static function ideas(string $status): array
+    {
+        global $wpdb;
+        return $wpdb->get_results($wpdb->prepare(
+            'SELECT * FROM ' . self::ideas_table() . ' WHERE status = %s ORDER BY created_at DESC, id DESC',
+            $status
+        ), ARRAY_A);
+    }
+
+    public static function set_idea_status(int $id, string $status): void
+    {
+        global $wpdb;
+        $wpdb->update(self::ideas_table(), ['status' => $status], ['id' => $id]);
+    }
+
+    public static function delete_idea(int $id): void
+    {
+        global $wpdb;
+        $wpdb->delete(self::ideas_table(), ['id' => $id]);
     }
 
     /* ---------- dates ---------- */

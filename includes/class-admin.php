@@ -4,7 +4,7 @@ if (!defined('ABSPATH')) {
 }
 
 /**
- * WordPress admin: the task board and the settings page.
+ * WordPress admin: the task board, the ideas and the settings page.
  */
 class Hastan_Admin
 {
@@ -13,12 +13,14 @@ class Hastan_Admin
         add_action('admin_menu', [self::class, 'menu']);
         add_action('admin_post_hastan_settings', [self::class, 'save_settings']);
         add_action('admin_post_hastan_action', [self::class, 'handle_action']);
+        add_action('admin_post_hastan_idea', [self::class, 'handle_idea']);
     }
 
     public static function menu(): void
     {
         add_menu_page('Hastan', 'Hastan', 'manage_options', 'hastan', [self::class, 'board_page'], 'dashicons-yes-alt', 3);
         add_submenu_page('hastan', 'Задачи', 'Задачи', 'manage_options', 'hastan', [self::class, 'board_page']);
+        add_submenu_page('hastan', 'Идеи', 'Идеи', 'manage_options', 'hastan-ideas', [self::class, 'ideas_page']);
         add_submenu_page('hastan', 'Настройки Hastan', 'Настройки', 'manage_options', 'hastan-settings', [self::class, 'settings_page']);
     }
 
@@ -41,6 +43,70 @@ class Hastan_Admin
         if (!empty($_GET['hastan_notice'])) {
             echo '<div class="notice notice-info is-dismissible"><p>' . esc_html(wp_unslash($_GET['hastan_notice'])) . '</p></div>';
         }
+    }
+
+    /* ---------- ideas ---------- */
+
+    public static function ideas_page(): void
+    {
+        $archive = ($_GET['view'] ?? '') === 'archive';
+        $ideas = Hastan_DB::ideas($archive ? 'archived' : 'new');
+        $action_url = admin_url('admin-post.php');
+        $base = admin_url('admin.php?page=hastan-ideas');
+        echo '<div class="wrap"><h1>Hastan: идеи</h1>';
+        self::notice();
+        echo '<style>.hastan-ideas{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;max-width:1200px;margin-top:16px}
+.hastan-idea{background:#fff;border:1px solid #dcdcde;border-radius:10px;padding:16px 18px;display:flex;flex-direction:column;gap:8px}
+.hastan-idea h3{margin:0;font-size:16px;line-height:1.35}.hastan-idea-meta{display:flex;gap:8px;align-items:center;color:#646970;font-size:12px}
+.hastan-topic{background:#f0f6fc;color:#2271b1;border-radius:20px;padding:2px 10px;font-weight:600}
+.hastan-idea-body{font-size:14px;line-height:1.55;white-space:pre-line}
+.hastan-idea details{color:#646970;font-size:12px}.hastan-idea-actions{margin-top:auto;display:flex;gap:6px}</style>';
+        echo '<p><a href="' . esc_url($base) . '"' . ($archive ? '' : ' style="font-weight:600"') . '>Новые</a> | '
+            . '<a href="' . esc_url($base . '&view=archive') . '"' . ($archive ? ' style="font-weight:600"' : '') . '>Архив</a></p>';
+        if (!$ideas) {
+            echo '<p>' . ($archive ? 'В архиве пусто.' : 'Идей пока нет. Напишите боту, например: «идея: сделать рубрику с рецептами коктейлей».') . '</p>';
+        }
+        echo '<div class="hastan-ideas">';
+        foreach ($ideas as $idea) {
+            $date = Hastan_DB::utc_to_local($idea['created_at']);
+            echo '<div class="hastan-idea"><div class="hastan-idea-meta">'
+                . ($idea['topic'] !== '' ? '<span class="hastan-topic">' . esc_html($idea['topic']) . '</span>' : '')
+                . '<span>' . esc_html($date->format('d.m.Y')) . '</span></div>'
+                . '<h3>' . esc_html($idea['title']) . '</h3>'
+                . '<div class="hastan-idea-body">' . esc_html($idea['body']) . '</div>';
+            if (!empty($idea['original'])) {
+                echo '<details><summary>Как было сказано</summary>' . esc_html($idea['original']) . '</details>';
+            }
+            echo '<div class="hastan-idea-actions">';
+            $ops = $archive ? ['restore' => 'Вернуть', 'delete' => 'Удалить'] : ['archive' => 'В архив', 'delete' => 'Удалить'];
+            foreach ($ops as $op => $label) {
+                echo '<form method="post" action="' . esc_url($action_url) . '">';
+                wp_nonce_field('hastan_idea');
+                echo '<input type="hidden" name="action" value="hastan_idea"><input type="hidden" name="op" value="' . $op . '">'
+                    . '<input type="hidden" name="id" value="' . (int) $idea['id'] . '">'
+                    . '<button class="button button-small"' . ($op === 'delete' ? ' onclick="return confirm(\'Удалить идею?\')"' : '') . '>' . $label . '</button></form>';
+            }
+            echo '</div></div>';
+        }
+        echo '</div></div>';
+    }
+
+    public static function handle_idea(): void
+    {
+        self::check('hastan_idea');
+        $id = (int) ($_POST['id'] ?? 0);
+        switch (sanitize_key($_POST['op'] ?? '')) {
+            case 'archive':
+                Hastan_DB::set_idea_status($id, 'archived');
+                break;
+            case 'restore':
+                Hastan_DB::set_idea_status($id, 'new');
+                break;
+            case 'delete':
+                Hastan_DB::delete_idea($id);
+                break;
+        }
+        self::back('hastan-ideas');
     }
 
     /* ---------- task board ---------- */
