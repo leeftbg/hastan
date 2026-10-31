@@ -66,60 +66,71 @@ class Hastan_Scheduler
         return true;
     }
 
+    /**
+     * 10:00: tasks due today and tomorrow. Overdue tasks are not repeated:
+     * they were already in yesterday's messages.
+     */
     public static function morning(DateTimeImmutable $now, bool $force = false): void
     {
         if (!$force && !self::due_now($now, (string) Hastan_Settings::get('morning_time'), 'hastan_last_morning')) {
             return;
         }
-        $tasks = Hastan_DB::open_tasks();
-        if (!$tasks) {
+        $today = self::due_on($now);
+        $tomorrow = self::due_on($now->modify('+1 day'));
+        if (!$today && !$tomorrow) {
             return;
         }
-        $text = Hastan_Brain::compose(
-            'Пора утреннего сообщения. Напиши план на сегодня: что горит (срок сегодня или уже прошёл), '
-            . 'что нужно начать заранее, чтобы успеть к ближайшим срокам, и какие пункты чек-листов ещё не сделаны. '
-            . 'Если задачи из разных проектов (в квадратных скобках), сгруппируй по проектам. '
-            . 'Коротко, 5–10 строк, начни с «Доброе утро». Не пиши, что уже сделано. Второстепенные открытые пункты (вопросы, решения, «по желанию») называй только у задач со сроком сегодня или уже прошедшим: отдельной короткой строкой сразу под задачей, «ещё: …». У остальных задач их не упоминай. Неясности — одной строкой с ❗, не как задача. Пункты (по желанию) не упоминай. Задачи без срока упомяни одной строкой в конце, если они есть.'
-        ) ?? self::plain_list('Доброе утро! Открытые задачи:', $tasks);
-        Hastan_Telegram::send($text);
+        $out = ['Доброе утро!'];
+        if ($today) {
+            $out[] = "\nСегодня:\n" . self::titles($today);
+        }
+        if ($tomorrow) {
+            $out[] = "\nЗавтра:\n" . self::titles($tomorrow);
+        }
+        Hastan_Telegram::send(implode("\n", $out));
     }
 
+    /** 20:00: what is due today and still open, with buttons. */
     public static function evening(DateTimeImmutable $now, bool $force = false): void
     {
         if (!$force && !self::due_now($now, (string) Hastan_Settings::get('evening_time'), 'hastan_last_evening')) {
             return;
         }
-        $end_of_day = $now->setTime(23, 59, 59)->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
-        $tasks = array_values(array_filter(
-            Hastan_DB::open_tasks(),
-            fn ($t) => $t['due_at'] !== null && $t['due_at'] <= $end_of_day
-        ));
+        $tasks = self::due_on($now);
         if (!$tasks) {
             return;
         }
-        $text = Hastan_Brain::compose(
-            'Пора вечерней проверки. Начни с «Сегодня не закрыто:» и перечисли задачи со сроком сегодня или раньше, '
-            . 'по одной строке на задачу: название и главное, что осталось, без подробностей. '
-            . 'Не пиши, что уже сделано или вышло. Второстепенные открытые пункты (вопросы, решения, «по желанию», FAQ и т.п.) '
-            . 'дай отдельной короткой строкой сразу под этой задачей: «ещё: FAQ, фото блюд». '
-            . 'Пункты (по желанию) не упоминай совсем. Неясности (например, разное время в постах) не считай задачей: одна строка с ❗ в конце, без просьбы что-то выяснить. '
-            . 'Если задачи из разных проектов, сгруппируй по проектам. Ничего не спрашивай и не объясняй кнопки: они и так под сообщением.'
-        ) ?? self::plain_list('Вечерняя проверка. Не закрыто:', $tasks);
-        Hastan_Telegram::send($text, array_map([Hastan_Telegram::class, 'task_buttons'], array_slice($tasks, 0, 6)));
+        Hastan_Telegram::send(
+            "Сегодня не закрыто:\n" . self::titles($tasks),
+            array_map([Hastan_Telegram::class, 'task_buttons'], array_slice($tasks, 0, 8))
+        );
     }
 
-    /** A list without the AI, for when Claude is unreachable. */
-    private static function plain_list(string $heading, array $tasks): string
+    /** Open tasks whose deadline is on the given local day. */
+    private static function due_on(DateTimeImmutable $day): array
     {
-        $out = [$heading];
+        $utc = new DateTimeZone('UTC');
+        $from = $day->setTime(0, 0)->setTimezone($utc)->format('Y-m-d H:i:s');
+        $to = $day->setTime(23, 59, 59)->setTimezone($utc)->format('Y-m-d H:i:s');
+        return array_values(array_filter(
+            Hastan_DB::open_tasks(),
+            fn ($t) => $t['due_at'] !== null && $t['due_at'] >= $from && $t['due_at'] <= $to
+        ));
+    }
+
+    /** Task titles only, grouped by project. */
+    private static function titles(array $tasks): string
+    {
+        $groups = [];
         foreach ($tasks as $task) {
-            $due = Hastan_DB::utc_to_local($task['due_at']);
-            $out[] = '— ' . $task['title'] . ($due ? ' (до ' . $due->format('d.m') . ')' : '');
-            foreach (Hastan_DB::items((int) $task['id']) as $item) {
-                if ($item['status'] === 'open' && !(int) $item['optional']) {
-                    $out[] = '   · ' . $item['title'];
-                }
+            $groups[$task['project'] !== '' ? $task['project'] : ''][] = '— ' . $task['title'];
+        }
+        $out = [];
+        foreach ($groups as $project => $lines) {
+            if (count($groups) > 1 && $project !== '') {
+                $out[] = mb_strtoupper(mb_substr($project, 0, 1)) . mb_substr($project, 1) . ':';
             }
+            array_push($out, ...$lines);
         }
         return implode("\n", $out);
     }
