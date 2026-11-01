@@ -56,9 +56,15 @@ class Hastan_Admin
     {
         $habits = Hastan_Habits::all();
         $today = Hastan_Settings::now()->setTime(0, 0);
+        // From the day the picture started (or the habits were added), at most 60 days back.
+        $state = Hastan_Picture::state();
+        $first = !empty($state['start'])
+            ? new DateTimeImmutable($state['start'], $today->getTimezone())
+            : ($habits ? min(array_map(fn ($h) => Hastan_DB::utc_to_local($h['created_at'])->setTime(0, 0), $habits)) : $today);
+        $first = max($first, $today->modify('-59 days'));
         $days = [];
-        for ($i = 27; $i >= 0; $i--) {
-            $days[] = $today->modify("-{$i} days");
+        for ($day = $first; $day <= $today; $day = $day->modify('+1 day')) {
+            $days[] = $day;
         }
         $marks = Hastan_Habits::marks($days[0]->format('Y-m-d'), $today->format('Y-m-d'));
         echo '<div class="wrap"><h1>Hastan: привычки</h1>';
@@ -71,8 +77,9 @@ class Hastan_Admin
 .hastan-grid td a{display:block;width:100%;height:100%}.hastan-grid td.r{background:#d7262e}.hastan-grid td.b{background:#1b1b1f}
 .hastan-grid tr.today td.d{font-weight:700}
 .hastan-habits-form td{padding:4px 8px 4px 0}</style>';
+        self::picture_section();
         if ($habits) {
-            echo '<div class="hastan-sheet"><table class="hastan-grid"><tr><th></th>';
+            echo '<h2>Таблица</h2><div class="hastan-sheet"><table class="hastan-grid"><tr><th></th>';
             foreach ($habits as $habit) {
                 echo '<th><span>' . esc_html($habit['name']) . '</span></th>';
             }
@@ -90,8 +97,6 @@ class Hastan_Admin
             echo '</table></div>';
             echo '<p class="description">Нажмите на клетку, чтобы закрасить или стереть. Отмечать можно и в Telegram: кнопками в вечернем сообщении, словами («шея, силовые») или фото бумажной таблицы.</p>';
         }
-
-        self::picture_section();
 
         echo '<h2>Список и ритм</h2><p class="description">Ритм — не реже чем раз в столько дней. Если привычка выпадет из ритма, утром придёт одна строка «давно не было», один раз.</p>';
         echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '">';
