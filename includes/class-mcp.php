@@ -133,6 +133,9 @@ class Hastan_MCP
             'annotations' => ['readOnlyHint' => true],
         ]];
         foreach (Hastan_Brain::tools() as $tool) {
+            if ($tool['name'] === 'show_picture') {
+                continue; // Only meaningful in Telegram.
+            }
             $tools[] = ['name' => $tool['name'], 'description' => $tool['description'], 'inputSchema' => $tool['inputSchema']];
         }
         return $tools;

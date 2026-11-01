@@ -102,9 +102,7 @@ class Hastan_Scheduler
         if ($lines) {
             Hastan_Telegram::send("Не забыть:\n" . implode("\n", $lines));
         }
-        if (Hastan_Habits::all()) {
-            Hastan_Telegram::send('Сегодня, ' . $now->format('d.m'), Hastan_Habits::buttons($now->format('Y-m-d')));
-        }
+
     }
 
     /** Open events that have not passed yet. */

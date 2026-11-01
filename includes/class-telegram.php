@@ -214,6 +214,9 @@ class Hastan_Telegram
         if (!in_array(mb_strtolower(trim($reply, " \n.!")), ['', 'ок', 'ok'], true)) {
             self::send($reply);
         }
+        if (Hastan_Brain::$picture_requested && ($png = Hastan_Picture::render_png())) {
+            self::send_photo($png);
+        }
     }
 
     private static function link_chat(string $chat_id, string $code): void

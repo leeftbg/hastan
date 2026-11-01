@@ -23,6 +23,9 @@ class Hastan_Brain
     /** Short notes of what the tools did during this turn, kept in the chat log. */
     private static array $done = [];
 
+    /** Set by the show_picture tool; the Telegram handler sends the picture after the reply. */
+    public static bool $picture_requested = false;
+
     private static function client(): Client
     {
         if (!self::$client) {
@@ -363,6 +366,12 @@ PROMPT;
                 ],
             ],
             [
+                'name' => 'show_picture',
+                'description' => 'Присылает пользователю картинку-мозаику привычек в её текущем состоянии.',
+                'strict' => true,
+                'inputSchema' => ['type' => 'object', 'properties' => new stdClass(), 'additionalProperties' => false],
+            ],
+            [
                 'name' => 'save_idea',
                 'description' => 'Сохраняет идею пользователя (не задачу) в отдельный раздел «Идеи» на сайте. Напоминаний по идеям нет.',
                 'strict' => true,
@@ -550,6 +559,13 @@ PROMPT;
                     Hastan_Food::delete_entry((int) $id);
                 }
                 return 'Удалено. Сегодня ' . round(Hastan_Food::total(Hastan_Settings::now()->format('Y-m-d'))) . ' из ' . Hastan_Food::limit();
+
+            case 'show_picture':
+                if (!Hastan_Picture::exists()) {
+                    return 'Картинка ещё не загружена.';
+                }
+                self::$picture_requested = true;
+                return 'Картинка будет отправлена после ответа.';
 
             case 'save_idea':
                 if (trim((string) ($input['title'] ?? '')) === '' || trim((string) ($input['body'] ?? '')) === '') {
