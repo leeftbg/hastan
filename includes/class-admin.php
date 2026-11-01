@@ -4,7 +4,7 @@ if (!defined('ABSPATH')) {
 }
 
 /**
- * WordPress admin: the task board, habits, food, ideas and the settings page.
+ * WordPress admin: the task board, habits, goals, food, ideas and the settings page.
  */
 class Hastan_Admin
 {
@@ -18,6 +18,7 @@ class Hastan_Admin
         add_action('admin_post_hastan_habits', [self::class, 'save_habits']);
         add_action('admin_post_hastan_picture', [self::class, 'save_picture']);
         add_action('admin_post_hastan_food', [self::class, 'save_food']);
+        add_action('admin_post_hastan_goal', [self::class, 'handle_goal']);
     }
 
     public static function menu(): void
@@ -25,6 +26,7 @@ class Hastan_Admin
         add_menu_page('Hastan', 'Hastan', 'manage_options', 'hastan', [self::class, 'board_page'], 'dashicons-yes-alt', 3);
         add_submenu_page('hastan', 'Задачи', 'Задачи', 'manage_options', 'hastan', [self::class, 'board_page']);
         add_submenu_page('hastan', 'Привычки', 'Привычки', 'manage_options', 'hastan-habits', [self::class, 'habits_page']);
+        add_submenu_page('hastan', 'Цели', 'Цели', 'manage_options', 'hastan-goals', [self::class, 'goals_page']);
         add_submenu_page('hastan', 'Питание', 'Питание', 'manage_options', 'hastan-food', [self::class, 'food_page']);
         add_submenu_page('hastan', 'Идеи', 'Идеи', 'manage_options', 'hastan-ideas', [self::class, 'ideas_page']);
         add_submenu_page('hastan', 'Настройки Hastan', 'Настройки', 'manage_options', 'hastan-settings', [self::class, 'settings_page']);
@@ -97,7 +99,7 @@ class Hastan_Admin
                 echo '</tr>';
             }
             echo '</table></div>';
-            echo '<p class="description">Нажмите на клетку, чтобы закрасить или стереть. Отмечать можно и в Telegram: кнопками в вечернем сообщении, словами («шея, силовые») или фото бумажной таблицы.</p>';
+            echo '<p class="description">Нажмите на клетку, чтобы закрасить или стереть. Отмечать можно и в Telegram: словами («шея, силовые») или фото бумажной таблицы.</p>';
         }
 
         echo '<h2>Список и ритм</h2><p class="description">Ритм — не реже чем раз в столько дней. Если привычка выпадет из ритма, утром придёт одна строка «давно не было», один раз.</p>';
@@ -341,6 +343,134 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
             }
         }
         self::back('hastan-food', 'Сохранено.');
+    }
+
+    /* ---------- goals ---------- */
+
+    private static function goal_form(string $op, array $fields, string $button, string $extra = ''): string
+    {
+        $html = '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '" style="display:inline">'
+            . wp_nonce_field('hastan_goal', '_wpnonce', true, false)
+            . '<input type="hidden" name="action" value="hastan_goal"><input type="hidden" name="op" value="' . esc_attr($op) . '">';
+        foreach ($fields as $name => $value) {
+            $html .= '<input type="hidden" name="' . esc_attr($name) . '" value="' . esc_attr((string) $value) . '">';
+        }
+        return $html . $extra . $button . '</form>';
+    }
+
+    public static function goals_page(): void
+    {
+        $today = Hastan_Settings::now()->format('Y-m-d');
+        echo '<div class="wrap"><h1>Hastan: цели</h1>';
+        self::notice();
+        echo '<style>.hastan-goals{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px;max-width:1200px;margin-top:12px}
+.hastan-goal{background:#fff;border:1px solid #dcdcde;border-radius:10px;padding:16px 18px;display:flex;flex-direction:column;gap:10px}
+.hastan-goal.later{opacity:.75}.hastan-goal.done{background:#f6fbf6}
+.hastan-goal h2{margin:0;font-size:17px}.hastan-goal-meta{color:#646970;font-size:12px}
+.hastan-steps{margin:0;padding:0;list-style:none}.hastan-steps li{display:flex;align-items:center;gap:8px;padding:3px 0}
+.hastan-steps button.tick{width:20px;height:20px;border:1.5px solid #8c8f94;border-radius:4px;background:#fff;cursor:pointer;padding:0;line-height:16px}
+.hastan-steps li.done button.tick{background:#2271b1;border-color:#2271b1;color:#fff}.hastan-steps li.done span{color:#646970}
+.hastan-steps .when{color:#8c8f94;font-size:12px}.hastan-steps .x{margin-left:auto;border:0;background:none;color:#b32d2e;cursor:pointer}
+.hastan-notes{margin:0;padding:0;list-style:none;font-size:13px;max-height:220px;overflow:auto}.hastan-notes li{padding:3px 0;display:flex;gap:8px}
+.hastan-notes .d{color:#646970;min-width:42px}.hastan-notes .x{margin-left:auto;border:0;background:none;color:#b32d2e;cursor:pointer}
+.hastan-goal details summary{cursor:pointer;color:#2271b1;font-size:13px}.hastan-goal input[type=text]{max-width:100%}</style>';
+        echo '<p class="description">Цели — это путь, а не ритм. Напоминаний по ним нет. Бот сам запишет, если вы скажете «сегодня ездила по двору» или «разобрала тему 3».</p>';
+        echo '<div class="hastan-goals">';
+        foreach (Hastan_Goals::all() as $goal) {
+            $id = (int) $goal['id'];
+            $steps = Hastan_Goals::steps($id);
+            $done = count(array_filter($steps, fn ($s) => $s['done_on']));
+            echo '<div class="hastan-goal ' . esc_attr($goal['status']) . '"><div><h2>' . esc_html($goal['title']) . '</h2><div class="hastan-goal-meta">'
+                . esc_html(Hastan_Goals::STATUSES[$goal['status']] ?? '') . ($goal['due'] !== '' ? ' · ' . esc_html($goal['due']) : '')
+                . ($steps ? " · шагов {$done} из " . count($steps) : '') . '</div></div>';
+
+            echo '<ul class="hastan-steps">';
+            foreach ($steps as $step) {
+                $sid = (int) $step['id'];
+                echo '<li' . ($step['done_on'] ? ' class="done"' : '') . '>'
+                    . self::goal_form('step_toggle', ['step' => $sid], '<button class="tick" title="Отметить">' . ($step['done_on'] ? '✓' : '') . '</button>')
+                    . '<span>' . esc_html($step['title']) . '</span>'
+                    . ($step['done_on'] ? '<span class="when">' . esc_html(Hastan_Goals::short_date($step['done_on'])) . '</span>' : '')
+                    . self::goal_form('step_delete', ['step' => $sid], '<button class="x" title="Удалить шаг" onclick="return confirm(\'Удалить шаг?\')">×</button>')
+                    . '</li>';
+            }
+            echo '</ul>';
+            echo self::goal_form('step_add', ['goal' => $id], ' <button class="button button-small">Добавить шаг</button>', '<input type="text" name="title" placeholder="Новый шаг" required>');
+
+            $notes = Hastan_Goals::notes($id);
+            echo '<div><strong style="font-size:13px">Дневник</strong>' . ($notes ? '' : ' <span class="hastan-goal-meta">пока пусто</span>') . '<ul class="hastan-notes">';
+            foreach ($notes as $note) {
+                echo '<li><span class="d">' . esc_html(Hastan_Goals::short_date($note['day'])) . '</span><span>' . esc_html($note['body']) . '</span>'
+                    . self::goal_form('note_delete', ['note' => (int) $note['id']], '<button class="x" title="Удалить" onclick="return confirm(\'Удалить запись?\')">×</button>') . '</li>';
+            }
+            echo '</ul></div>';
+            echo self::goal_form('note_add', ['goal' => $id], ' <button class="button button-small">Записать</button>',
+                '<input type="date" name="day" value="' . esc_attr($today) . '"> <input type="text" name="body" placeholder="Что было" required>');
+
+            $status = '';
+            foreach (Hastan_Goals::STATUSES as $key => $label) {
+                $status .= '<option value="' . $key . '"' . selected($goal['status'], $key, false) . '>' . esc_html($label) . '</option>';
+            }
+            echo '<details><summary>Изменить цель</summary><p>'
+                . self::goal_form('save', ['goal' => $id], '<br><button class="button button-small">Сохранить</button>',
+                    '<input type="text" name="title" value="' . esc_attr($goal['title']) . '" class="regular-text"><br>'
+                    . '<input type="text" name="due" value="' . esc_attr($goal['due']) . '" placeholder="Срок словами, например «к лету»"> '
+                    . '<select name="status">' . $status . '</select>')
+                . ' ' . self::goal_form('delete', ['goal' => $id], '<button class="button button-small button-link-delete" onclick="return confirm(\'Удалить цель вместе с шагами и дневником?\')">Удалить</button>')
+                . '</p></details></div>';
+        }
+        echo '</div>';
+        echo '<h2>Новая цель</h2>' . self::goal_form('save', ['goal' => 0], ' <button class="button button-primary">Добавить</button>',
+            '<input type="text" name="title" placeholder="Название" class="regular-text" required> <input type="text" name="due" placeholder="Срок словами">'
+            . '<input type="hidden" name="status" value="active">');
+        echo '</div>';
+    }
+
+    public static function handle_goal(): void
+    {
+        self::check('hastan_goal');
+        $text = fn ($key) => sanitize_text_field(wp_unslash($_POST[$key] ?? ''));
+        switch (sanitize_key($_POST['op'] ?? '')) {
+            case 'save':
+                $id = (int) ($_POST['goal'] ?? 0);
+                $goal = $id ? Hastan_Goals::get($id) : null;
+                if ($text('title') !== '') {
+                    Hastan_Goals::save([
+                        'title' => $text('title'),
+                        'due' => $text('due'),
+                        'status' => sanitize_key($_POST['status'] ?? 'active'),
+                        'position' => $goal ? (int) $goal['position'] : count(Hastan_Goals::all()),
+                    ], $goal ? $id : 0);
+                }
+                break;
+            case 'delete':
+                Hastan_Goals::delete((int) ($_POST['goal'] ?? 0));
+                break;
+            case 'step_add':
+                if ($text('title') !== '' && Hastan_Goals::get((int) ($_POST['goal'] ?? 0))) {
+                    Hastan_Goals::add_step((int) $_POST['goal'], $text('title'));
+                }
+                break;
+            case 'step_toggle':
+                global $wpdb;
+                $step = (int) ($_POST['step'] ?? 0);
+                $done = $wpdb->get_var($wpdb->prepare('SELECT done_on FROM ' . Hastan_Goals::steps_table() . ' WHERE id = %d', $step));
+                Hastan_Goals::set_step($step, $done ? null : Hastan_Settings::now()->format('Y-m-d'));
+                break;
+            case 'step_delete':
+                Hastan_Goals::delete_step((int) ($_POST['step'] ?? 0));
+                break;
+            case 'note_add':
+                $day = preg_match('/^\d{4}-\d{2}-\d{2}$/', $text('day')) ? $text('day') : Hastan_Settings::now()->format('Y-m-d');
+                if ($text('body') !== '' && Hastan_Goals::get((int) ($_POST['goal'] ?? 0))) {
+                    Hastan_Goals::add_note((int) $_POST['goal'], $day, $text('body'));
+                }
+                break;
+            case 'note_delete':
+                Hastan_Goals::delete_note((int) ($_POST['note'] ?? 0));
+                break;
+        }
+        self::back('hastan-goals');
     }
 
     /* ---------- ideas ---------- */
