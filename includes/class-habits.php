@@ -58,6 +58,14 @@ class Hastan_Habits
                 self::save(['name' => $name, 'every_days' => $every, 'position' => $pos]);
             }
         }
+        if (!get_option('hastan_habits_steps')) {
+            // Steps were asked for after the first list; add them once.
+            $names = array_map(fn ($h) => mb_strtolower($h['name']), self::all(false));
+            if (!in_array('норма шагов', $names, true)) {
+                self::save(['name' => 'Норма шагов', 'every_days' => 1, 'position' => count($names)]);
+            }
+            update_option('hastan_habits_steps', 1, false);
+        }
     }
 
     /* ---------- data ---------- */
@@ -190,6 +198,9 @@ class Hastan_Habits
         }
         if ($row) {
             $rows[] = $row;
+        }
+        if (Hastan_Picture::exists()) {
+            $rows[] = [['🖼 Картинка', 'picture']];
         }
         return $rows;
     }

@@ -16,6 +16,7 @@ class Hastan_Admin
         add_action('admin_post_hastan_idea', [self::class, 'handle_idea']);
         add_action('admin_post_hastan_habit_toggle', [self::class, 'toggle_habit']);
         add_action('admin_post_hastan_habits', [self::class, 'save_habits']);
+        add_action('admin_post_hastan_picture', [self::class, 'save_picture']);
     }
 
     public static function menu(): void
@@ -90,6 +91,8 @@ class Hastan_Admin
             echo '<p class="description">Нажмите на клетку, чтобы закрасить или стереть. Отмечать можно и в Telegram: кнопками в вечернем сообщении, словами («шея, силовые») или фото бумажной таблицы.</p>';
         }
 
+        self::picture_section();
+
         echo '<h2>Список и ритм</h2><p class="description">Ритм — не реже чем раз в столько дней. Если привычка выпадет из ритма, утром придёт одна строка «давно не было», один раз.</p>';
         echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '">';
         wp_nonce_field('hastan_habits');
@@ -103,6 +106,79 @@ class Hastan_Admin
         echo '<tr><td><input type="text" name="new[name]" placeholder="Новая привычка" class="regular-text"></td>'
             . '<td><input type="number" min="1" max="60" name="new[every_days]" value="2" style="width:70px"></td><td></td></tr></table>';
         echo '<p><button class="button button-primary">Сохранить</button></p></form></div>';
+    }
+
+    /** The mosaic: open pieces in colour, closed ones only as faint outlines on paper. */
+    private static function picture_section(): void
+    {
+        echo '<h2>Картинка</h2>';
+        $action = esc_url(admin_url('admin-post.php'));
+        if (Hastan_Picture::exists()) {
+            $progress = Hastan_Picture::progress();
+            $meta = Hastan_Picture::meta();
+            echo '<div class="hastan-sheet" style="padding:12px"><canvas id="hastan-picture" style="max-width:100%;height:auto;display:block"></canvas></div>';
+            echo '<p>';
+            foreach ($progress as $zone) {
+                echo '<span style="display:inline-block;margin-right:18px">' . esc_html($zone['name']) . ': ' . count($zone['open']) . ' из ' . (int) $zone['total'] . '</span>';
+            }
+            echo '</p>';
+            $data = wp_json_encode([
+                'picture' => Hastan_Picture::url('picture.jpg'),
+                'tiles' => Hastan_Picture::url('tiles.png'),
+                'open' => Hastan_Picture::open_ids(),
+                'paper' => Hastan_Picture::PAPER,
+            ]);
+            echo "<script>(function(d){var c=document.getElementById('hastan-picture'),n=2,img=new Image(),t=new Image();
+function go(){if(--n)return;var w=t.width,h=t.height;c.width=w;c.height=h;var x=c.getContext('2d',{willReadFrequently:true});
+x.drawImage(t,0,0);var ti=x.getImageData(0,0,w,h).data;x.drawImage(img,0,0,w,h);var out=x.getImageData(0,0,w,h),p=out.data,o={};
+d.open.forEach(function(i){o[i]=1});for(var y=0;y<h;y++)for(var k=0;k<w;k++){var j=(y*w+k)*4,id=ti[j]+ti[j+1]*256;if(o[id])continue;
+var e=(k>0&&ti[j-4]+ti[j-3]*256!==id)||(y>0&&ti[j-w*4]+ti[j-w*4+1]*256!==id);p[j]=d.paper[0]-(e?17:0);p[j+1]=d.paper[1]-(e?19:0);p[j+2]=d.paper[2]-(e?23:0);}
+x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.tiles;})({$data});</script>";
+
+            echo '<h3>Какая часть за что отвечает</h3><form method="post" action="' . $action . '">';
+            wp_nonce_field('hastan_picture');
+            echo '<input type="hidden" name="action" value="hastan_picture"><input type="hidden" name="op" value="map"><table class="hastan-habits-form">';
+            $habits = Hastan_Habits::all();
+            foreach ($meta['zones'] as $i => $zone) {
+                echo '<tr><td><b>' . esc_html($zone['name']) . '</b></td><td>';
+                foreach ($habits as $habit) {
+                    $on = in_array((int) $habit['id'], $progress[$i]['habits'], true);
+                    echo '<label style="margin-right:12px"><input type="checkbox" name="map[' . $i . '][]" value="' . (int) $habit['id'] . '"' . checked($on, true, false) . '> ' . esc_html($habit['name']) . '</label>';
+                }
+                echo '</td></tr>';
+            }
+            echo '</table><p><button class="button">Сохранить</button></p></form>';
+        } else {
+            echo '<p>Картинки пока нет. Загрузите архив с картинкой, который подготовил Claude.</p>';
+        }
+        echo '<form method="post" action="' . $action . '" enctype="multipart/form-data">';
+        wp_nonce_field('hastan_picture');
+        echo '<input type="hidden" name="action" value="hastan_picture"><input type="hidden" name="op" value="upload">'
+            . '<input type="file" name="pack" accept=".zip"> <button class="button">' . (Hastan_Picture::exists() ? 'Загрузить новую картинку (начнётся заново)' : 'Загрузить') . '</button></form>';
+    }
+
+    public static function save_picture(): void
+    {
+        self::check('hastan_picture');
+        if (($_POST['op'] ?? '') === 'map') {
+            $map = [];
+            foreach ((array) ($_POST['map'] ?? []) as $i => $ids) {
+                $map[(int) $i] = array_map('intval', (array) $ids);
+            }
+            $meta = Hastan_Picture::meta();
+            foreach (array_keys($meta['zones'] ?? []) as $i) {
+                $map[$i] = $map[$i] ?? [];
+            }
+            ksort($map);
+            Hastan_Picture::set_map($map);
+            self::back('hastan-habits', 'Сохранено.');
+        }
+        $file = $_FILES['pack']['tmp_name'] ?? '';
+        if (!$file || !is_uploaded_file($file)) {
+            self::back('hastan-habits', 'Файл не загрузился.');
+        }
+        $error = Hastan_Picture::install_pack($file);
+        self::back('hastan-habits', $error ?? 'Картинка загружена. Отметки считаются с сегодняшнего дня.');
     }
 
     public static function toggle_habit(): void

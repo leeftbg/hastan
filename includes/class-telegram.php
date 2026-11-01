@@ -70,6 +70,28 @@ class Hastan_Telegram
         return $ok;
     }
 
+    /** Sends a PNG to the linked chat. */
+    public static function send_photo(string $png, string $caption = ''): bool
+    {
+        $token = Hastan_Settings::get('telegram_token');
+        $chat_id = Hastan_Settings::get('chat_id');
+        if (!$token || !$chat_id) {
+            return false;
+        }
+        $boundary = wp_generate_password(24, false);
+        $body = '';
+        foreach (['chat_id' => $chat_id, 'caption' => $caption] as $name => $value) {
+            $body .= "--{$boundary}\r\nContent-Disposition: form-data; name=\"{$name}\"\r\n\r\n{$value}\r\n";
+        }
+        $body .= "--{$boundary}\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"picture.png\"\r\nContent-Type: image/png\r\n\r\n{$png}\r\n--{$boundary}--\r\n";
+        $response = wp_remote_post("https://api.telegram.org/bot{$token}/sendPhoto", [
+            'timeout' => 30,
+            'headers' => ['Content-Type' => "multipart/form-data; boundary={$boundary}"],
+            'body' => $body,
+        ]);
+        return !is_wp_error($response) && wp_remote_retrieve_response_code($response) === 200;
+    }
+
     /** Rows of [text, callback_data] pairs → an inline keyboard. */
     public static function keyboard(array $buttons): array
     {
@@ -216,6 +238,12 @@ class Hastan_Telegram
             return;
         }
         [$action, $id] = array_pad(explode(':', (string) ($cb['data'] ?? ''), 2), 2, '');
+        if ($action === 'picture') {
+            self::api('answerCallbackQuery', ['callback_query_id' => $cb['id']]);
+            $png = Hastan_Picture::render_png();
+            $png ? self::send_photo($png) : self::send('Картинку пока не получилось нарисовать.');
+            return;
+        }
         if ($action === 'habit') {
             self::toggle_habit($cb, $id);
             return;
