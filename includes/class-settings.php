@@ -17,6 +17,8 @@ class Hastan_Settings
             'telegram_secret' => '',
             'link_code' => '',
             'mcp_key' => '',
+            'steps_key' => '',
+            'steps_goal' => 8000,
             'chat_id' => '',
             'anthropic_key' => '',
             'model' => 'claude-opus-5-5',
@@ -56,6 +58,9 @@ class Hastan_Settings
         }
         if ($s['mcp_key'] === '') {
             $changes['mcp_key'] = wp_generate_password(32, false);
+        }
+        if ($s['steps_key'] === '') {
+            $changes['steps_key'] = wp_generate_password(32, false);
         }
         if ($s['link_code'] === '') {
             $changes['link_code'] = strtolower(wp_generate_password(8, false));

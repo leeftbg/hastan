@@ -9,7 +9,7 @@ if (!defined('ABSPATH')) {
  */
 class Hastan_DB
 {
-    const VERSION = '8';
+    const VERSION = '9';
 
     public static function tasks_table(): string
     {
@@ -72,6 +72,7 @@ class Hastan_DB
 
         Hastan_Habits::install($charset);
         Hastan_Food::install($charset);
+        Hastan_Steps::install($charset);
 
         dbDelta("CREATE TABLE $log (
   id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
