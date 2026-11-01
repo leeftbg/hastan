@@ -80,6 +80,7 @@ class Hastan_Scheduler
         if ($idle >= (int) Hastan_Settings::get('site_idle_hours') * HOUR_IN_SECONDS) {
             $out[] = '— Сайтом не занимались ' . floor($idle / DAY_IN_SECONDS) . ' дн.';
         }
+        Hastan_Food::close_day($now->modify('-1 day')->format('Y-m-d'));
         $lapses = Hastan_Habits::lapses($now);
         if ($lapses) {
             $out[] = '— Давно не было: ' . implode(', ', $lapses);

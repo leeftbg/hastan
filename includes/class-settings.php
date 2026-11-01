@@ -23,6 +23,7 @@ class Hastan_Settings
             'effort' => 'low',
             'morning_time' => '10:00',
             'evening_time' => '20:00',
+            'kcal_limit' => 2000,
             'site_projects' => 'lotus site, бронирование',
             'site_idle_hours' => 72,
             'about' => 'Я веду SMM клуба: посты в Instagram и Facebook, новости на сайте, монтаж видео, реклама в Meta.',

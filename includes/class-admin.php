@@ -4,7 +4,7 @@ if (!defined('ABSPATH')) {
 }
 
 /**
- * WordPress admin: the task board, habits, ideas and the settings page.
+ * WordPress admin: the task board, habits, food, ideas and the settings page.
  */
 class Hastan_Admin
 {
@@ -17,6 +17,7 @@ class Hastan_Admin
         add_action('admin_post_hastan_habit_toggle', [self::class, 'toggle_habit']);
         add_action('admin_post_hastan_habits', [self::class, 'save_habits']);
         add_action('admin_post_hastan_picture', [self::class, 'save_picture']);
+        add_action('admin_post_hastan_food', [self::class, 'save_food']);
     }
 
     public static function menu(): void
@@ -24,6 +25,7 @@ class Hastan_Admin
         add_menu_page('Hastan', 'Hastan', 'manage_options', 'hastan', [self::class, 'board_page'], 'dashicons-yes-alt', 3);
         add_submenu_page('hastan', 'Задачи', 'Задачи', 'manage_options', 'hastan', [self::class, 'board_page']);
         add_submenu_page('hastan', 'Привычки', 'Привычки', 'manage_options', 'hastan-habits', [self::class, 'habits_page']);
+        add_submenu_page('hastan', 'Питание', 'Питание', 'manage_options', 'hastan-food', [self::class, 'food_page']);
         add_submenu_page('hastan', 'Идеи', 'Идеи', 'manage_options', 'hastan-ideas', [self::class, 'ideas_page']);
         add_submenu_page('hastan', 'Настройки Hastan', 'Настройки', 'manage_options', 'hastan-settings', [self::class, 'settings_page']);
     }
@@ -221,6 +223,111 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
             Hastan_Habits::save(['name' => $name, 'every_days' => (int) ($new['every_days'] ?? 1), 'position' => $position]);
         }
         self::back('hastan-habits', 'Сохранено.');
+    }
+
+    /* ---------- food ---------- */
+
+    public static function food_page(): void
+    {
+        $today = Hastan_Settings::now();
+        $day = $today->format('Y-m-d');
+        $limit = Hastan_Food::limit();
+        $action = esc_url(admin_url('admin-post.php'));
+        $fmt = [Hastan_Food::class, 'num'];
+        echo '<div class="wrap"><h1>Hastan: питание</h1>';
+        self::notice();
+        echo '<style>.hastan-food td,.hastan-food th{padding:4px 8px 4px 0;text-align:left}.hastan-food input[type=number]{width:80px}
+.hastan-bar{height:10px;background:#e5e5e5;border-radius:5px;max-width:420px;overflow:hidden}.hastan-bar i{display:block;height:100%;background:#2e7d32}.hastan-bar i.over{background:#d7262e}
+.hastan-est{color:#996800;font-size:12px}</style>';
+
+        $total = Hastan_Food::total($day);
+        echo '<h2>Сегодня: ' . round($total) . ' из ' . $limit . ' ккал</h2>';
+        echo '<div class="hastan-bar"><i class="' . ($total > $limit ? 'over' : '') . '" style="width:' . min(100, round($total / $limit * 100)) . '%"></i></div>';
+        $entries = Hastan_Food::entries($day);
+        if ($entries) {
+            echo '<table class="hastan-food" style="margin-top:8px">';
+            foreach ($entries as $e) {
+                echo '<tr><td>' . esc_html($e['name']) . '</td><td>' . (int) $e['grams'] . ' г</td><td>' . round($e['kcal']) . ' ккал</td><td><form method="post" action="' . $action . '">';
+                wp_nonce_field('hastan_food');
+                echo '<input type="hidden" name="action" value="hastan_food"><input type="hidden" name="op" value="delete_entry"><input type="hidden" name="id" value="' . (int) $e['id'] . '"><button class="button-link">убрать</button></form></td></tr>';
+            }
+            echo '</table>';
+        } else {
+            echo '<p>Сегодня пока ничего не записано. Напишите боту, например: «каша 100 г, банан».</p>';
+        }
+
+        $totals = Hastan_Food::totals($today->modify('-13 days')->format('Y-m-d'), $day);
+        if ($totals) {
+            echo '<h2>Последние 2 недели</h2><table class="hastan-food">';
+            foreach (array_reverse($totals, true) as $d => $kcal) {
+                $over = $kcal > $limit;
+                echo '<tr><td>' . esc_html(substr($d, 8, 2) . '.' . substr($d, 5, 2)) . '</td><td' . ($over ? ' style="color:#d7262e;font-weight:600"' : '') . '>' . round($kcal) . ' ккал</td></tr>';
+            }
+            echo '</table>';
+        }
+
+        echo '<h2>Продукты</h2><p class="description">Калории и БЖУ на 100 г. Порция — для штучного и своих блюд: тогда боту можно писать без веса («банан», «мой салат»). Пометка «оценка» значит, что число подставил бот; поправьте по этикетке, и пометка уйдёт.</p>';
+        echo '<form method="post" action="' . $action . '">';
+        wp_nonce_field('hastan_food');
+        echo '<input type="hidden" name="action" value="hastan_food"><input type="hidden" name="op" value="foods"><table class="hastan-food">'
+            . '<tr><th>Продукт или блюдо</th><th>Ккал</th><th>Белки</th><th>Жиры</th><th>Углеводы</th><th>Порция, г</th><th>Удалить</th></tr>';
+        $row = function (string $key, array $f) use ($fmt) {
+            echo '<tr><td><input type="text" name="' . $key . '[name]" value="' . esc_attr($f['name'] ?? '') . '" class="regular-text">'
+                . (!empty($f['estimated']) ? ' <span class="hastan-est">оценка</span>' : '') . '</td>';
+            foreach (['kcal', 'protein', 'fat', 'carbs', 'portion_g'] as $field) {
+                echo '<td><input type="number" step="0.1" min="0" name="' . $key . '[' . $field . ']" value="' . esc_attr($fmt($f[$field] ?? null)) . '"></td>';
+            }
+            echo '<td>' . (isset($f['id']) ? '<input type="checkbox" name="' . $key . '[delete]" value="1">' : '') . '</td></tr>';
+        };
+        foreach (Hastan_Food::foods() as $food) {
+            $row('food[' . (int) $food['id'] . ']', $food);
+        }
+        for ($i = 0; $i < 8; $i++) {
+            $row('new[' . $i . ']', []);
+        }
+        echo '</table><p><button class="button button-primary">Сохранить</button></p></form></div>';
+    }
+
+    public static function save_food(): void
+    {
+        self::check('hastan_food');
+        if (($_POST['op'] ?? '') === 'delete_entry') {
+            Hastan_Food::delete_entry((int) ($_POST['id'] ?? 0));
+            self::back('hastan-food');
+        }
+        $clean = function (array $row): array {
+            $row = wp_unslash($row);
+            return array_map(fn ($v) => sanitize_text_field((string) $v), $row);
+        };
+        foreach ((array) ($_POST['food'] ?? []) as $id => $row) {
+            $row = $clean((array) $row);
+            $old = Hastan_Food::get((int) $id);
+            if (!$old) {
+                continue;
+            }
+            if (!empty($row['delete'])) {
+                Hastan_Food::delete((int) $id);
+                continue;
+            }
+            if ($row['name'] === '') {
+                continue;
+            }
+            // A correction by hand makes the number the user's own.
+            $changed = (float) $row['kcal'] !== (float) $old['kcal'];
+            $row['estimated'] = $old['estimated'] && !$changed;
+            Hastan_Food::save($row, (int) $id);
+        }
+        foreach ((array) ($_POST['new'] ?? []) as $row) {
+            $row = $clean((array) $row);
+            if (($row['name'] ?? '') !== '' && ($row['kcal'] ?? '') !== '') {
+                if ($existing = Hastan_Food::find($row['name'])) {
+                    Hastan_Food::save($row, (int) $existing['id']);
+                } else {
+                    Hastan_Food::save($row);
+                }
+            }
+        }
+        self::back('hastan-food', 'Сохранено.');
     }
 
     /* ---------- ideas ---------- */
@@ -438,6 +545,7 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
         self::field('Вечерняя проверка', '<input type="time" name="evening_time" value="' . esc_attr($s['evening_time']) . '">');
         self::field('Проекты сайта', '<input type="text" name="site_projects" value="' . esc_attr($s['site_projects']) . '" class="regular-text"><p class="description">Через запятую. У задач этих проектов нет сроков; если по ним долго нет работы, утром придёт напоминание.</p>');
         self::field('Напомнить про сайт после, часов', '<input type="number" min="24" max="720" name="site_idle_hours" value="' . (int) $s['site_idle_hours'] . '">');
+        self::field('Норма калорий в день', '<input type="number" min="500" max="6000" name="kcal_limit" value="' . (int) $s['kcal_limit'] . '">');
         self::field('О вас и вашей работе', '<textarea name="about" rows="3" class="large-text">' . esc_textarea($s['about']) . '</textarea><p class="description">Помощник учитывает это в ответах и идеях.</p>');
         foreach (Hastan_Templates::all() as $key => $tpl) {
             self::field('Шаблон «' . esc_html($tpl['name']) . '»', '<textarea name="tpl_' . esc_attr($key) . '" rows="6" class="large-text">' . esc_textarea(implode("\n", $tpl['items'])) . '</textarea><p class="description">Один пункт чек-листа на строку.</p>');
@@ -496,6 +604,7 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
                     'evening_time' => preg_match('/^\d{2}:\d{2}$/', $_POST['evening_time'] ?? '') ? $_POST['evening_time'] : '20:00',
                     'about' => sanitize_textarea_field(wp_unslash($_POST['about'] ?? '')),
                     'site_projects' => sanitize_text_field(wp_unslash($_POST['site_projects'] ?? '')),
+                    'kcal_limit' => max(500, min(6000, (int) ($_POST['kcal_limit'] ?? 2000))),
                     'site_idle_hours' => max(24, min(720, (int) ($_POST['site_idle_hours'] ?? 72))),
                 ];
                 foreach (['telegram_token', 'anthropic_key'] as $secret) {

@@ -164,6 +164,7 @@ class Hastan_Brain
 - Дополнительную работу по уже заведённому событию (ещё один Reels, ещё реклама) записывай, только если пользователь прямо просит, и без напоминаний.
 - Проекты сайта ({$site}): задачи без сроков.
 - Привычки — личное, отдельно от работы. Если пользователь говорит, что сделал что-то из привычек (например «шея, силовые»), отметь через mark_habits на сегодня или на названный день. Если прислано фото бумажной таблицы привычек, перенеси все закрашенные клетки через mark_habits (даты в таблице — дд.мм, год текущий). Не хвали, не комментируй и не уговаривай: ответ «ок». Сам про привычки не спрашивай.
+- Еда: когда пользователь пишет, что съел или готовит («каша 100 г», «съела 200 г картошки», «банан»), запиши через log_food и ответь одной строкой из результата, например «+260, сегодня 840 из 2000». Если продукта нет в базе, подставь обычную калорийность и скажи коротко «(оценка)». Не советуй, что есть.
 - Если пользователь делится идеей на любую тему, а не задачей («идея:», «пришло в голову», «а что если»), сохрани её инструментом save_idea и не создавай задач. Оформи аккуратно, но ничего не добавляй от себя.
 - Когда пользователь говорит о другой новой работе, создай задачу инструментом add_task. Срок — только день, без часов. «К пятнице» значит ближайшая пятница.
 - Если работа похожа на шаблон, укажи его, и чек-лист добавится сам. Шаблоны:
@@ -190,6 +191,7 @@ PROMPT;
         $lines = ['[Состояние на сейчас: ' . $days[(int) $now->format('w')] . ', ' . $now->format('d.m.Y H:i') . ']'];
         $lines[] = self::render_tasks(Hastan_DB::open_tasks(), 'Открытые задачи');
         $lines[] = Hastan_Habits::describe($now);
+        $lines[] = Hastan_Food::describe($now);
         $done = Hastan_DB::recently_done(24);
         if ($done) {
             $lines[] = self::render_tasks($done, 'Сделано за последние сутки');
@@ -296,6 +298,59 @@ PROMPT;
                         'done' => ['type' => 'boolean'],
                     ],
                     'required' => ['marks', 'done'],
+                    'additionalProperties' => false,
+                ],
+            ],
+            [
+                'name' => 'log_food',
+                'description' => 'Записывает съеденное. Название бери точно как в базе продуктов, если продукт там есть. Для нового продукта укажи обычную калорийность на 100 г (и обычную порцию для штучных), он сохранится в базу как оценка.',
+                'strict' => true,
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'items' => [
+                            'type' => 'array',
+                            'items' => [
+                                'type' => 'object',
+                                'properties' => [
+                                    'name' => ['type' => 'string'],
+                                    'grams' => ['type' => ['integer', 'null'], 'description' => 'Вес в граммах; null — обычная порция'],
+                                    'kcal_per_100g_if_new' => ['type' => ['number', 'null'], 'description' => 'Только для продукта, которого нет в базе'],
+                                    'portion_g_if_new' => ['type' => ['integer', 'null'], 'description' => 'Обычная порция в граммах для нового штучного продукта (банан, яйцо)'],
+                                ],
+                                'required' => ['name', 'grams', 'kcal_per_100g_if_new', 'portion_g_if_new'],
+                                'additionalProperties' => false,
+                            ],
+                        ],
+                        'date' => ['type' => ['string', 'null'], 'description' => 'YYYY-MM-DD, если не сегодня'],
+                    ],
+                    'required' => ['items', 'date'],
+                    'additionalProperties' => false,
+                ],
+            ],
+            [
+                'name' => 'save_food',
+                'description' => 'Добавляет продукт или блюдо в базу или исправляет его калорийность (например, по этикетке). Для своего блюда можно указать ккал на 100 г и порцию.',
+                'strict' => true,
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'name' => ['type' => 'string'],
+                        'kcal_per_100g' => ['type' => 'number'],
+                        'portion_g' => ['type' => ['integer', 'null']],
+                    ],
+                    'required' => ['name', 'kcal_per_100g', 'portion_g'],
+                    'additionalProperties' => false,
+                ],
+            ],
+            [
+                'name' => 'delete_food_entries',
+                'description' => 'Удаляет ошибочные записи о еде по их номерам (#id из списка «Съедено сегодня»).',
+                'strict' => true,
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => ['ids' => ['type' => 'array', 'items' => ['type' => 'integer']]],
+                    'required' => ['ids'],
                     'additionalProperties' => false,
                 ],
             ],
@@ -468,6 +523,24 @@ PROMPT;
                     }
                 }
                 return "Готово, отметок: {$count}.";
+
+            case 'log_food':
+                return Hastan_Food::log_tool($input);
+
+            case 'save_food':
+                $food = Hastan_Food::find((string) ($input['name'] ?? ''));
+                $data = ['name' => $input['name'], 'kcal' => $input['kcal_per_100g'] ?? 0, 'portion_g' => $input['portion_g'] ?? null];
+                if ($food) {
+                    $data += ['protein' => $food['protein'], 'fat' => $food['fat'], 'carbs' => $food['carbs']];
+                }
+                Hastan_Food::save($data, $food ? (int) $food['id'] : 0);
+                return 'Сохранено в базе.';
+
+            case 'delete_food_entries':
+                foreach ((array) ($input['ids'] ?? []) as $id) {
+                    Hastan_Food::delete_entry((int) $id);
+                }
+                return 'Удалено. Сегодня ' . round(Hastan_Food::total(Hastan_Settings::now()->format('Y-m-d'))) . ' из ' . Hastan_Food::limit();
 
             case 'save_idea':
                 if (trim((string) ($input['title'] ?? '')) === '' || trim((string) ($input['body'] ?? '')) === '') {
