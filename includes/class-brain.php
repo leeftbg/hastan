@@ -20,6 +20,9 @@ class Hastan_Brain
 
     private static ?Client $client = null;
 
+    /** Short notes of what the tools did during this turn, kept in the chat log. */
+    private static array $done = [];
+
     private static function client(): Client
     {
         if (!self::$client) {
@@ -37,8 +40,10 @@ class Hastan_Brain
     {
         $history = Hastan_DB::recent_log();
         Hastan_DB::log('user', $image ? "[фото] {$text}" : $text);
+        self::$done = [];
         $answer = self::run($history, $text, true, $image);
-        Hastan_DB::log('assistant', $answer);
+        // The log keeps what was actually done, so later turns don't redo or deny it.
+        Hastan_DB::log('assistant', $answer . (self::$done ? "\n[сделано: " . implode('; ', self::$done) . ']' : ''));
         return $answer;
     }
 
@@ -165,6 +170,7 @@ class Hastan_Brain
 - Проекты сайта ({$site}): задачи без сроков.
 - Привычки — личное, отдельно от работы. Если пользователь говорит, что сделал что-то из привычек (например «шея, силовые»), отметь через mark_habits на сегодня или на названный день. Если прислано фото бумажной таблицы привычек, перенеси все закрашенные клетки через mark_habits (даты в таблице — дд.мм, год текущий). Не хвали, не комментируй и не уговаривай: ответ «ок». Сам про привычки не спрашивай.
 - Еда: когда пользователь пишет, что съел или готовит («каша 100 г», «съела 200 г картошки», «банан»), запиши через log_food и ответь одной строкой из результата, например «+260, сегодня 840 из 2000». Если продукта нет в базе, подставь обычную калорийность и скажи коротко «(оценка)». Не советуй, что есть.
+- О своих прошлых действиях суди только по пометкам [сделано: …] в истории и по спискам выше (задачи, идеи, еда). Не сообщай об «ошибках» и не переделывай, если не уверен. Строки с ❗ — только про несоответствия в работе пользователя, не про тебя.
 - Если пользователь делится идеей на любую тему, а не задачей («идея:», «пришло в голову», «а что если»), сохрани её инструментом save_idea и не создавай задач. Оформи аккуратно, но ничего не добавляй от себя.
 - Когда пользователь говорит о другой новой работе, создай задачу инструментом add_task. Срок — только день, без часов. «К пятнице» значит ближайшая пятница.
 - Если работа похожа на шаблон, укажи его, и чек-лист добавится сам. Шаблоны:
@@ -192,6 +198,8 @@ PROMPT;
         $lines[] = self::render_tasks(Hastan_DB::open_tasks(), 'Открытые задачи');
         $lines[] = Hastan_Habits::describe($now);
         $lines[] = Hastan_Food::describe($now);
+        $ideas = array_slice(Hastan_DB::ideas('new'), 0, 10);
+        $lines[] = 'Последние сохранённые идеи: ' . ($ideas ? implode('; ', array_map(fn ($i) => '«' . $i['title'] . '»', $ideas)) : 'нет');
         $done = Hastan_DB::recently_done(24);
         if ($done) {
             $lines[] = self::render_tasks($done, 'Сделано за последние сутки');
@@ -393,6 +401,7 @@ PROMPT;
         try {
             $content = self::execute($name, $input);
             $error = false;
+            self::$done[] = $name . ': ' . mb_strimwidth(str_replace("\n", ' ', $content), 0, 120, '…');
         } catch (InvalidArgumentException $e) {
             $content = 'Ошибка: ' . $e->getMessage();
             $error = true;
@@ -545,6 +554,11 @@ PROMPT;
             case 'save_idea':
                 if (trim((string) ($input['title'] ?? '')) === '' || trim((string) ($input['body'] ?? '')) === '') {
                     throw new InvalidArgumentException('нужны заголовок и текст');
+                }
+                foreach (array_slice(Hastan_DB::ideas('new'), 0, 20) as $idea) {
+                    if (mb_strtolower(trim($idea['title'])) === mb_strtolower(trim((string) $input['title']))) {
+                        return 'Такая идея уже сохранена, второй раз не сохраняю.';
+                    }
                 }
                 Hastan_DB::add_idea($input);
                 return 'Идея сохранена.';
