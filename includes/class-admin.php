@@ -347,9 +347,9 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
 
     /* ---------- goals ---------- */
 
-    private static function goal_form(string $op, array $fields, string $button, string $extra = ''): string
+    private static function goal_form(string $op, array $fields, string $button, string $extra = '', string $attrs = 'style="display:inline"'): string
     {
-        $html = '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '" style="display:inline">'
+        $html = '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '" ' . $attrs . '>'
             . wp_nonce_field('hastan_goal', '_wpnonce', true, false)
             . '<input type="hidden" name="action" value="hastan_goal"><input type="hidden" name="op" value="' . esc_attr($op) . '">';
         foreach ($fields as $name => $value) {
@@ -358,71 +358,215 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
         return $html . $extra . $button . '</form>';
     }
 
+    private static function goal_url(int $id = 0, string $anchor = ''): string
+    {
+        return admin_url('admin.php?page=hastan-goals' . ($id ? '&goal=' . $id : '')) . ($anchor !== '' ? '#' . $anchor : '');
+    }
+
+    /** Done share of a goal's leaf steps: [done, in progress, total]. */
+    private static function goal_progress(int $id): array
+    {
+        $leaves = Hastan_Goals::leaves($id);
+        $count = fn ($state) => count(array_filter($leaves, fn ($s) => (int) $s['state'] === $state));
+        return [$count(2), $count(1), count($leaves)];
+    }
+
     public static function goals_page(): void
     {
-        $today = Hastan_Settings::now()->format('Y-m-d');
+        $goal = !empty($_GET['goal']) ? Hastan_Goals::get((int) $_GET['goal']) : null;
+        if ($goal && $goal['kind'] === 'exam') {
+            self::exam_page($goal);
+            return;
+        }
+        if ($goal) {
+            self::goal_page($goal);
+            return;
+        }
         echo '<div class="wrap"><h1>Hastan: цели</h1>';
         self::notice();
-        echo '<style>.hastan-goals{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px;max-width:1200px;margin-top:12px}
-.hastan-goal{background:#fff;border:1px solid #dcdcde;border-radius:10px;padding:16px 18px;display:flex;flex-direction:column;gap:10px}
-.hastan-goal.later{opacity:.75}.hastan-goal.done{background:#f6fbf6}
-.hastan-goal h2{margin:0;font-size:17px}.hastan-goal-meta{color:#646970;font-size:12px}
-.hastan-steps{margin:0;padding:0;list-style:none}.hastan-steps li{display:flex;align-items:center;gap:8px;padding:3px 0}
-.hastan-steps button.tick{width:20px;height:20px;border:1.5px solid #8c8f94;border-radius:4px;background:#fff;cursor:pointer;padding:0;line-height:16px}
-.hastan-steps li.done button.tick{background:#2271b1;border-color:#2271b1;color:#fff}.hastan-steps li.done span{color:#646970}
-.hastan-steps .when{color:#8c8f94;font-size:12px}.hastan-steps .x{margin-left:auto;border:0;background:none;color:#b32d2e;cursor:pointer}
-.hastan-notes{margin:0;padding:0;list-style:none;font-size:13px;max-height:220px;overflow:auto}.hastan-notes li{padding:3px 0;display:flex;gap:8px}
-.hastan-notes .d{color:#646970;min-width:42px}.hastan-notes .x{margin-left:auto;border:0;background:none;color:#b32d2e;cursor:pointer}
-.hastan-goal details summary{cursor:pointer;color:#2271b1;font-size:13px}.hastan-goal input[type=text]{max-width:100%}</style>';
-        echo '<p class="description">Цели — это путь, а не ритм. Напоминаний по ним нет. Бот сам запишет, если вы скажете «сегодня ездила по двору» или «разобрала тему 3».</p>';
-        echo '<div class="hastan-goals">';
-        foreach (Hastan_Goals::all() as $goal) {
-            $id = (int) $goal['id'];
-            $steps = Hastan_Goals::steps($id);
-            $done = count(array_filter($steps, fn ($s) => $s['done_on']));
-            echo '<div class="hastan-goal ' . esc_attr($goal['status']) . '"><div><h2>' . esc_html($goal['title']) . '</h2><div class="hastan-goal-meta">'
-                . esc_html(Hastan_Goals::STATUSES[$goal['status']] ?? '') . ($goal['due'] !== '' ? ' · ' . esc_html($goal['due']) : '')
-                . ($steps ? " · шагов {$done} из " . count($steps) : '') . '</div></div>';
-
-            echo '<ul class="hastan-steps">';
-            foreach ($steps as $step) {
-                $sid = (int) $step['id'];
-                echo '<li' . ($step['done_on'] ? ' class="done"' : '') . '>'
-                    . self::goal_form('step_toggle', ['step' => $sid], '<button class="tick" title="Отметить">' . ($step['done_on'] ? '✓' : '') . '</button>')
-                    . '<span>' . esc_html($step['title']) . '</span>'
-                    . ($step['done_on'] ? '<span class="when">' . esc_html(Hastan_Goals::short_date($step['done_on'])) . '</span>' : '')
-                    . self::goal_form('step_delete', ['step' => $sid], '<button class="x" title="Удалить шаг" onclick="return confirm(\'Удалить шаг?\')">×</button>')
-                    . '</li>';
+        echo '<style>.hg-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:18px;max-width:1100px;margin-top:14px}
+.hg-card{display:flex;flex-direction:column;gap:10px;background:#fff;border:1px solid #e2ddd2;border-radius:14px;padding:20px 22px;text-decoration:none;color:#1d2327;transition:box-shadow .15s,transform .15s}
+.hg-card:hover{box-shadow:0 6px 20px rgba(60,50,30,.12);transform:translateY(-2px);color:#1d2327}
+.hg-card h2{margin:0;font-size:19px;line-height:1.3}.hg-card .sub{color:#646970;font-size:13px}
+.hg-card .chip{align-self:flex-start;font-size:11px;letter-spacing:.04em;text-transform:uppercase;border-radius:20px;padding:3px 10px;background:#eef4ee;color:#2f7d5b;font-weight:600}
+.hg-card.later .chip{background:#f1efe9;color:#7a7466}.hg-card.later{opacity:.8}.hg-card.done .chip{background:#2f7d5b;color:#fff}
+.hg-bar{height:8px;border-radius:8px;background:#efe9dc;overflow:hidden;display:flex}.hg-bar i{display:block;height:100%}
+.hg-bar .d{background:#2f7d5b}.hg-bar .p{background:#e3a33b}.hg-card .meta{font-size:12px;color:#646970}</style>';
+        echo '<p class="description">Цели — это путь, а не ритм. Напоминаний по ним нет. У каждой цели своя страница.</p><div class="hg-list">';
+        foreach (Hastan_Goals::all() as $g) {
+            [$done, $doing, $total] = self::goal_progress((int) $g['id']);
+            $last = Hastan_Goals::notes((int) $g['id'], 1);
+            echo '<a class="hg-card ' . esc_attr($g['status']) . '" href="' . esc_url(self::goal_url((int) $g['id'])) . '">'
+                . '<span class="chip">' . esc_html(Hastan_Goals::STATUSES[$g['status']] ?? '') . ($g['due'] !== '' ? ' · ' . esc_html($g['due']) : '') . '</span>'
+                . '<h2>' . esc_html($g['title']) . '</h2>' . ($g['subtitle'] !== '' ? '<div class="sub">' . esc_html($g['subtitle']) . '</div>' : '');
+            if ($total) {
+                echo '<div class="hg-bar"><i class="d" style="width:' . round($done / $total * 100, 1) . '%"></i><i class="p" style="width:' . round($doing / $total * 100, 1) . '%"></i></div>'
+                    . '<div class="meta">готово ' . $done . ' из ' . $total . ($doing ? ', в процессе ' . $doing : '') . '</div>';
             }
-            echo '</ul>';
-            echo self::goal_form('step_add', ['goal' => $id], ' <button class="button button-small">Добавить шаг</button>', '<input type="text" name="title" placeholder="Новый шаг" required>');
-
-            $notes = Hastan_Goals::notes($id);
-            echo '<div><strong style="font-size:13px">Дневник</strong>' . ($notes ? '' : ' <span class="hastan-goal-meta">пока пусто</span>') . '<ul class="hastan-notes">';
-            foreach ($notes as $note) {
-                echo '<li><span class="d">' . esc_html(Hastan_Goals::short_date($note['day'])) . '</span><span>' . esc_html($note['body']) . '</span>'
-                    . self::goal_form('note_delete', ['note' => (int) $note['id']], '<button class="x" title="Удалить" onclick="return confirm(\'Удалить запись?\')">×</button>') . '</li>';
+            if ($last) {
+                echo '<div class="meta">последняя запись ' . esc_html(Hastan_Goals::short_date($last[0]['day'])) . ': ' . esc_html(mb_strimwidth($last[0]['body'], 0, 60, '…')) . '</div>';
             }
-            echo '</ul></div>';
-            echo self::goal_form('note_add', ['goal' => $id], ' <button class="button button-small">Записать</button>',
-                '<input type="date" name="day" value="' . esc_attr($today) . '"> <input type="text" name="body" placeholder="Что было" required>');
-
-            $status = '';
-            foreach (Hastan_Goals::STATUSES as $key => $label) {
-                $status .= '<option value="' . $key . '"' . selected($goal['status'], $key, false) . '>' . esc_html($label) . '</option>';
-            }
-            echo '<details><summary>Изменить цель</summary><p>'
-                . self::goal_form('save', ['goal' => $id], '<br><button class="button button-small">Сохранить</button>',
-                    '<input type="text" name="title" value="' . esc_attr($goal['title']) . '" class="regular-text"><br>'
-                    . '<input type="text" name="due" value="' . esc_attr($goal['due']) . '" placeholder="Срок словами, например «к лету»"> '
-                    . '<select name="status">' . $status . '</select>')
-                . ' ' . self::goal_form('delete', ['goal' => $id], '<button class="button button-small button-link-delete" onclick="return confirm(\'Удалить цель вместе с шагами и дневником?\')">Удалить</button>')
-                . '</p></details></div>';
+            echo '</a>';
         }
-        echo '</div>';
-        echo '<h2>Новая цель</h2>' . self::goal_form('save', ['goal' => 0], ' <button class="button button-primary">Добавить</button>',
+        echo '</div><h2>Новая цель</h2>' . self::goal_form('save', ['goal' => 0], ' <button class="button button-primary">Добавить</button>',
             '<input type="text" name="title" placeholder="Название" class="regular-text" required> <input type="text" name="due" placeholder="Срок словами">'
             . '<input type="hidden" name="status" value="active">');
+        echo '</div>';
+    }
+
+    /** Diary and goal settings, shared by both goal views. */
+    private static function goal_footer(array $goal, array $labels): string
+    {
+        $id = (int) $goal['id'];
+        $today = Hastan_Settings::now()->format('Y-m-d');
+        $notes = Hastan_Goals::notes($id);
+        $html = '<div class="hg-diary"><h2>' . esc_html($labels['diary']) . '</h2>';
+        $html .= self::goal_form('note_add', ['goal' => $id], ' <button class="button">' . esc_html($labels['write']) . '</button>',
+            '<input type="date" name="day" value="' . esc_attr($today) . '"> <input type="text" name="body" class="regular-text" placeholder="' . esc_attr($labels['what']) . '" required>', 'class="hg-note-form"');
+        $html .= $notes ? '<ul>' : '<p class="description">' . esc_html($labels['empty']) . '</p>';
+        foreach ($notes as $note) {
+            $html .= '<li><span class="d">' . esc_html(Hastan_Goals::short_date($note['day'])) . '</span><span>' . esc_html($note['body']) . '</span>'
+                . self::goal_form('note_delete', ['note' => (int) $note['id'], 'goal' => $id], '<button class="x" title="×" onclick="return confirm(\'?\')">×</button>') . '</li>';
+        }
+        $html .= ($notes ? '</ul>' : '') . '</div>';
+
+        $status = '';
+        foreach (Hastan_Goals::STATUSES as $key => $label) {
+            $status .= '<option value="' . $key . '"' . selected($goal['status'], $key, false) . '>' . esc_html($label) . '</option>';
+        }
+        $html .= '<details class="hg-edit"><summary>Изменить цель</summary><p>'
+            . self::goal_form('save', ['goal' => $id], '<br><button class="button button-small">Сохранить</button>',
+                '<input type="text" name="title" value="' . esc_attr($goal['title']) . '" class="regular-text"><br>'
+                . '<input type="text" name="subtitle" value="' . esc_attr($goal['subtitle']) . '" class="regular-text" placeholder="Подзаголовок"><br>'
+                . '<input type="text" name="due" value="' . esc_attr($goal['due']) . '" placeholder="Срок словами"> '
+                . '<select name="status">' . $status . '</select>')
+            . ' ' . self::goal_form('delete', ['goal' => $id], '<button class="button button-small button-link-delete" onclick="return confirm(\'Удалить цель вместе с шагами и дневником?\')">Удалить цель</button>')
+            . '</p></details>';
+        return $html;
+    }
+
+    private static function goal_styles(): string
+    {
+        return '<style>.hg-back{display:inline-block;margin:10px 0 4px;text-decoration:none}
+.hg-diary{max-width:900px;margin-top:28px}.hg-diary ul{margin:12px 0 0;padding:0;list-style:none}.hg-diary li{display:flex;gap:12px;padding:6px 0;border-bottom:1px solid #efe9dc}
+.hg-diary .d{color:#8a8476;min-width:46px;font-variant-numeric:tabular-nums}.hg-diary .x,.hg-steps .x{margin-left:auto;border:0;background:none;color:#b32d2e;cursor:pointer;font-size:16px}
+.hg-edit{margin:24px 0;max-width:900px}.hg-edit summary{cursor:pointer;color:#2271b1}
+.hg-steps{list-style:none;margin:16px 0;padding:0;max-width:700px}.hg-steps li{display:flex;align-items:center;gap:12px;padding:10px 14px;background:#fff;border:1px solid #e2ddd2;border-radius:10px;margin-bottom:8px}
+.hg-steps li.s2 span.t{color:#8a8476;text-decoration:line-through}.hg-steps .when{color:#8a8476;font-size:12px}
+.hg-dot{width:22px;height:22px;border-radius:50%;border:2px solid #b8b0a0;background:#fff;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;font-size:12px;color:#fff;flex:none}
+.s1 .hg-dot{border-color:#e3a33b;background:linear-gradient(90deg,#e3a33b 50%,#fff 50%)}.s2 .hg-dot{border-color:#2f7d5b;background:#2f7d5b}</style>';
+    }
+
+    /** An ordinary goal: a ladder of steps and a diary. */
+    private static function goal_page(array $goal): void
+    {
+        $id = (int) $goal['id'];
+        echo '<div class="wrap"><a class="hg-back" href="' . esc_url(self::goal_url()) . '">← Все цели</a><h1>' . esc_html($goal['title']) . '</h1>';
+        self::notice();
+        echo self::goal_styles();
+        echo '<p class="description">' . esc_html(Hastan_Goals::STATUSES[$goal['status']] ?? '') . ($goal['due'] !== '' ? ' · ' . esc_html($goal['due']) : '')
+            . ($goal['subtitle'] !== '' ? ' · ' . esc_html($goal['subtitle']) : '') . '</p>';
+        echo '<ol class="hg-steps">';
+        foreach (Hastan_Goals::steps($id) as $step) {
+            $sid = (int) $step['id'];
+            $state = (int) $step['state'];
+            echo '<li class="s' . $state . '">'
+                . self::goal_form('step_cycle', ['step' => $sid], '<button class="hg-dot" title="Отметить">' . ($state === 2 ? '✓' : '') . '</button>')
+                . '<span class="t">' . esc_html($step['title']) . '</span>'
+                . ($step['done_on'] ? '<span class="when">' . esc_html(Hastan_Goals::short_date($step['done_on'])) . '</span>' : '')
+                . self::goal_form('step_delete', ['step' => $sid], '<button class="x" title="Удалить шаг" onclick="return confirm(\'Удалить шаг?\')">×</button>', '', 'style="margin-left:auto"')
+                . '</li>';
+        }
+        echo '</ol>' . self::goal_form('step_add', ['goal' => $id], ' <button class="button">Добавить шаг</button>', '<input type="text" name="title" class="regular-text" placeholder="Новый шаг" required>');
+        echo '<p class="description">Кружок: пусто → в процессе → готово → пусто.</p>';
+        echo self::goal_footer($goal, ['diary' => 'Дневник', 'write' => 'Записать', 'what' => 'Что было', 'empty' => 'Пока пусто.']);
+        echo '</div>';
+    }
+
+    /** The state exam, in Bulgarian: overall progress, then topic cards with questions and literature. */
+    private static function exam_page(array $goal): void
+    {
+        $id = (int) $goal['id'];
+        $tree = Hastan_Goals::tree($id);
+        [$done, $doing, $total] = self::goal_progress($id);
+        $pct = $total ? round($done / $total * 100) : 0;
+        $states = ['не е започнат', 'в процес', 'готов'];
+        echo '<div class="wrap hx" lang="bg"><a class="hg-back" href="' . esc_url(self::goal_url()) . '">← Все цели</a>';
+        self::notice();
+        echo self::goal_styles();
+        echo '<style>
+.hx{--ink:#1f2a37;--muted:#7a7466;--paper:#fbf8f2;--line:#e6dfd0;--done:#2f7d5b;--doing:#e3a33b;--empty:#e9e3d6;max-width:1180px}
+.hx-hero{display:flex;gap:28px;align-items:center;justify-content:space-between;flex-wrap:wrap;background:linear-gradient(135deg,#1f2a37,#2d3e52);color:#fff;border-radius:18px;padding:28px 32px;margin:8px 0 18px}
+.hx-hero h1{color:#fff;font-size:30px;margin:0 0 6px;padding:0;font-family:Georgia,"Times New Roman",serif;font-weight:600}
+.hx-hero .sub{opacity:.8;font-size:14px}.hx-hero .due{display:inline-block;margin-top:12px;background:rgba(255,255,255,.12);border-radius:20px;padding:4px 12px;font-size:12px;letter-spacing:.04em}
+.hx-ring{position:relative;width:120px;height:120px;flex:none}.hx-ring svg{transform:rotate(-90deg)}
+.hx-ring .n{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:28px;font-weight:600}
+.hx-ring .n small{font-size:11px;font-weight:400;opacity:.75;margin-top:2px}
+.hx-strip{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 8px}.hx-strip a{display:flex;gap:3px;text-decoration:none;padding:4px;border-radius:6px}
+.hx-strip a:hover{background:#efe9dc}.hx-strip i{width:14px;height:14px;border-radius:3px;background:var(--empty)}.hx-strip i.s1{background:var(--doing)}.hx-strip i.s2{background:var(--done)}
+.hx-legend{display:flex;gap:16px;color:var(--muted);font-size:12px;margin-bottom:18px;flex-wrap:wrap}.hx-legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.hx-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:16px}
+.hx-topic{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:18px 20px;scroll-margin-top:50px}
+.hx-topic.all{border-color:#9fc9b4;background:#f3faf6}
+.hx-head{display:flex;gap:14px;align-items:flex-start;margin-bottom:12px}
+.hx-num{font-family:Georgia,serif;font-size:30px;line-height:1;color:#c9bfa9;font-weight:600;min-width:38px}.hx-topic.all .hx-num{color:var(--done)}
+.hx-head h3{margin:2px 0 4px;font-size:15px;line-height:1.35;color:var(--ink)}.hx-head .c{font-size:12px;color:var(--muted)}
+.hx-q{border-top:1px solid var(--line);padding:10px 0}.hx-q:last-child{padding-bottom:0}
+.hx-row{display:flex;gap:10px;align-items:flex-start}.hx-row form{flex:none;margin:0;line-height:0}
+.hx-code{flex:none;font-size:11px;font-weight:600;color:var(--muted);background:#efe9dc;border-radius:6px;padding:2px 6px;margin-top:2px}
+.hx-q .t{font-size:13.5px;line-height:1.45;color:var(--ink)}.hx-q.s2 .t{color:var(--muted)}
+.hx-q details{margin:6px 0 0 66px}.hx-q summary{cursor:pointer;color:#2271b1;font-size:12px}
+.hx-q ol{margin:6px 0 0 18px;font-size:12.5px;line-height:1.5;color:#3c434a}.hx-q ol li{margin-bottom:3px}
+.hx-hint{color:var(--muted);font-size:12px;margin:14px 0 0}
+@media (max-width:600px){.hx-grid{grid-template-columns:1fr}.hx-hero{padding:22px}.hx-q details{margin-left:0}}
+</style>';
+        $r = 52;
+        $c = 2 * M_PI * $r;
+        echo '<div class="hx-hero"><div><h1>' . esc_html($goal['title']) . '</h1>'
+            . ($goal['subtitle'] !== '' ? '<div class="sub">' . esc_html($goal['subtitle']) . '</div>' : '')
+            . ($goal['due'] !== '' ? '<span class="due">' . esc_html(mb_strtoupper($goal['due'])) . '</span>' : '') . '</div>'
+            . '<div class="hx-ring"><svg width="120" height="120"><circle cx="60" cy="60" r="' . $r . '" fill="none" stroke="rgba(255,255,255,.14)" stroke-width="10"/>'
+            . '<circle cx="60" cy="60" r="' . $r . '" fill="none" stroke="#e3a33b" stroke-width="10" stroke-dasharray="' . round(($done + $doing) / max(1, $total) * $c, 1) . ' ' . round($c, 1) . '" stroke-linecap="round"/>'
+            . '<circle cx="60" cy="60" r="' . $r . '" fill="none" stroke="#5fc293" stroke-width="10" stroke-dasharray="' . round($done / max(1, $total) * $c, 1) . ' ' . round($c, 1) . '" stroke-linecap="round"/></svg>'
+            . '<div class="n">' . $pct . '%<small>' . $done . ' от ' . $total . ' въпроса</small></div></div></div>';
+
+        echo '<div class="hx-strip">';
+        foreach ($tree as $topic) {
+            echo '<a href="#t' . esc_attr($topic['code']) . '" title="Тема ' . esc_attr($topic['code'] . '. ' . $topic['title']) . '">';
+            foreach ($topic['children'] as $q) {
+                echo '<i class="s' . (int) $q['state'] . '"></i>';
+            }
+            echo '</a>';
+        }
+        echo '</div><div class="hx-legend"><span><i style="background:var(--empty)"></i>' . $states[0] . '</span><span><i style="background:var(--doing)"></i>' . $states[1]
+            . ' (' . $doing . ')</span><span><i style="background:var(--done)"></i>' . $states[2] . ' (' . $done . ')</span></div>';
+
+        echo '<div class="hx-grid">';
+        foreach ($tree as $topic) {
+            $qs = $topic['children'];
+            $ready = count(array_filter($qs, fn ($q) => (int) $q['state'] === 2));
+            echo '<section class="hx-topic' . ($qs && $ready === count($qs) ? ' all' : '') . '" id="t' . esc_attr($topic['code']) . '">'
+                . '<div class="hx-head"><div class="hx-num">' . esc_html(str_pad($topic['code'], 2, '0', STR_PAD_LEFT)) . '</div><div><h3>' . esc_html($topic['title']) . '</h3>'
+                . '<div class="c">Тема ' . esc_html($topic['code']) . ' · готови ' . $ready . ' от ' . count($qs) . '</div></div></div>';
+            foreach ($qs as $q) {
+                $state = (int) $q['state'];
+                $books = array_filter(explode("\n", (string) $q['details']));
+                echo '<div class="hx-q s' . $state . '"><div class="hx-row">'
+                    . self::goal_form('step_cycle', ['step' => (int) $q['id'], 'anchor' => 't' . $topic['code']], '<button class="hg-dot" title="' . esc_attr($states[$state]) . '">' . ($state === 2 ? '✓' : '') . '</button>', '', '')
+                    . '<span class="hx-code">' . esc_html($q['code']) . '</span><span class="t">' . esc_html($q['title']) . '</span></div>';
+                if ($books) {
+                    echo '<details><summary>Литература (' . count($books) . ')</summary><ol>';
+                    foreach ($books as $book) {
+                        echo '<li>' . esc_html($book) . '</li>';
+                    }
+                    echo '</ol></details>';
+                }
+                echo '</div>';
+            }
+            echo '</section>';
+        }
+        echo '</div><p class="hx-hint">Кръгчето: не е започнат → в процес → готов. Можете и да пишете на бота: «разобрала 7.2».</p>';
+        echo self::goal_footer($goal, ['diary' => 'Дневник', 'write' => 'Запиши', 'what' => 'Какво направих', 'empty' => 'Още няма записи.']);
         echo '</div>';
     }
 
@@ -430,13 +574,17 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
     {
         self::check('hastan_goal');
         $text = fn ($key) => sanitize_text_field(wp_unslash($_POST[$key] ?? ''));
+        $back = (int) ($_POST['goal'] ?? 0);
+        $anchor = preg_replace('/[^a-z0-9]/', '', (string) ($_POST['anchor'] ?? ''));
         switch (sanitize_key($_POST['op'] ?? '')) {
             case 'save':
                 $id = (int) ($_POST['goal'] ?? 0);
                 $goal = $id ? Hastan_Goals::get($id) : null;
                 if ($text('title') !== '') {
-                    Hastan_Goals::save([
+                    $back = Hastan_Goals::save([
                         'title' => $text('title'),
+                        'subtitle' => isset($_POST['subtitle']) ? $text('subtitle') : ($goal['subtitle'] ?? ''),
+                        'kind' => $goal['kind'] ?? '',
                         'due' => $text('due'),
                         'status' => sanitize_key($_POST['status'] ?? 'active'),
                         'position' => $goal ? (int) $goal['position'] : count(Hastan_Goals::all()),
@@ -445,32 +593,39 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
                 break;
             case 'delete':
                 Hastan_Goals::delete((int) ($_POST['goal'] ?? 0));
+                $back = 0;
                 break;
             case 'step_add':
-                if ($text('title') !== '' && Hastan_Goals::get((int) ($_POST['goal'] ?? 0))) {
-                    Hastan_Goals::add_step((int) $_POST['goal'], $text('title'));
+                if ($text('title') !== '' && Hastan_Goals::get($back)) {
+                    Hastan_Goals::add_step($back, $text('title'));
                 }
                 break;
-            case 'step_toggle':
-                global $wpdb;
-                $step = (int) ($_POST['step'] ?? 0);
-                $done = $wpdb->get_var($wpdb->prepare('SELECT done_on FROM ' . Hastan_Goals::steps_table() . ' WHERE id = %d', $step));
-                Hastan_Goals::set_step($step, $done ? null : Hastan_Settings::now()->format('Y-m-d'));
+            case 'step_cycle':
+                $step = Hastan_Goals::get_step((int) ($_POST['step'] ?? 0));
+                if ($step) {
+                    Hastan_Goals::set_state((int) $step['id'], ((int) $step['state'] + 1) % 3);
+                    $back = (int) $step['goal_id'];
+                }
                 break;
             case 'step_delete':
-                Hastan_Goals::delete_step((int) ($_POST['step'] ?? 0));
+                $step = Hastan_Goals::get_step((int) ($_POST['step'] ?? 0));
+                if ($step) {
+                    Hastan_Goals::delete_step((int) $step['id']);
+                    $back = (int) $step['goal_id'];
+                }
                 break;
             case 'note_add':
                 $day = preg_match('/^\d{4}-\d{2}-\d{2}$/', $text('day')) ? $text('day') : Hastan_Settings::now()->format('Y-m-d');
-                if ($text('body') !== '' && Hastan_Goals::get((int) ($_POST['goal'] ?? 0))) {
-                    Hastan_Goals::add_note((int) $_POST['goal'], $day, $text('body'));
+                if ($text('body') !== '' && Hastan_Goals::get($back)) {
+                    Hastan_Goals::add_note($back, $day, $text('body'));
                 }
                 break;
             case 'note_delete':
                 Hastan_Goals::delete_note((int) ($_POST['note'] ?? 0));
                 break;
         }
-        self::back('hastan-goals');
+        wp_safe_redirect(self::goal_url($back, $anchor));
+        exit;
     }
 
     /* ---------- ideas ---------- */

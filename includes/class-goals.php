@@ -39,6 +39,8 @@ class Hastan_Goals
   id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
   title varchar(150) NOT NULL,
   due varchar(60) NOT NULL DEFAULT '',
+  kind varchar(20) NOT NULL DEFAULT '',
+  subtitle varchar(255) NOT NULL DEFAULT '',
   status varchar(20) NOT NULL DEFAULT 'active',
   position int(11) NOT NULL DEFAULT 0,
   created_at datetime NOT NULL,
@@ -47,8 +49,12 @@ class Hastan_Goals
         dbDelta("CREATE TABLE $steps (
   id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
   goal_id bigint(20) unsigned NOT NULL,
-  title varchar(200) NOT NULL,
+  parent_id bigint(20) unsigned NOT NULL DEFAULT 0,
+  code varchar(10) NOT NULL DEFAULT '',
+  title varchar(255) NOT NULL,
+  details text NULL,
   position int(11) NOT NULL DEFAULT 0,
+  state tinyint(1) NOT NULL DEFAULT 0,
   done_on date NULL,
   PRIMARY KEY  (id),
   KEY goal_id (goal_id)
@@ -66,6 +72,38 @@ class Hastan_Goals
         if (!get_option('hastan_goals_seeded')) {
             self::seed();
             update_option('hastan_goals_seeded', 1, false);
+        }
+        global $wpdb;
+        $wpdb->query("UPDATE $steps SET state = 2 WHERE done_on IS NOT NULL AND state = 0");
+        if (!get_option('hastan_exam_seeded')) {
+            self::seed_exam();
+            update_option('hastan_exam_seeded', 1, false);
+        }
+    }
+
+    /** The state exam: the "Экзамены" goal gets its syllabus, topic by topic. */
+    private static function seed_exam(): void
+    {
+        $exam = require __DIR__ . '/exam-ppt.php';
+        $id = 0;
+        foreach (self::all() as $goal) {
+            if (mb_strtolower($goal['title']) === 'экзамены') {
+                $id = (int) $goal['id'];
+            }
+        }
+        $id = self::save([
+            'title' => $exam['title'],
+            'subtitle' => $exam['subtitle'],
+            'kind' => 'exam',
+            'due' => 'до лятото',
+            'status' => 'active',
+            'position' => 0,
+        ], $id);
+        foreach ($exam['topics'] as $t => [$topic, $questions]) {
+            $topic_id = self::add_step($id, $topic, $t, 0, (string) ($t + 1));
+            foreach ($questions as $q => [$question, $books]) {
+                self::add_step($id, $question, $q, $topic_id, ($t + 1) . '.' . ($q + 1), implode("\n", $books));
+            }
         }
     }
 
@@ -123,6 +161,8 @@ class Hastan_Goals
         $fields = [
             'title' => mb_substr(trim((string) $data['title']), 0, 150),
             'due' => mb_substr(trim((string) ($data['due'] ?? '')), 0, 60),
+            'kind' => (string) ($data['kind'] ?? ''),
+            'subtitle' => mb_substr(trim((string) ($data['subtitle'] ?? '')), 0, 255),
             'status' => isset(self::STATUSES[$data['status'] ?? '']) ? $data['status'] : 'active',
             'position' => (int) ($data['position'] ?? 0),
         ];
@@ -148,27 +188,69 @@ class Hastan_Goals
         return $wpdb->get_results($wpdb->prepare('SELECT * FROM ' . self::steps_table() . ' WHERE goal_id = %d ORDER BY position, id', $goal_id), ARRAY_A);
     }
 
-    public static function add_step(int $goal_id, string $title, ?int $position = null): int
+    public static function add_step(int $goal_id, string $title, ?int $position = null, int $parent_id = 0, string $code = '', ?string $details = null): int
     {
         global $wpdb;
         $wpdb->insert(self::steps_table(), [
             'goal_id' => $goal_id,
-            'title' => mb_substr(trim($title), 0, 200),
+            'parent_id' => $parent_id,
+            'code' => $code,
+            'title' => mb_substr(trim($title), 0, 255),
+            'details' => $details,
             'position' => $position ?? count(self::steps($goal_id)),
         ]);
         return (int) $wpdb->insert_id;
     }
 
-    public static function set_step(int $step_id, ?string $done_on): void
+    /** 0 — not started, 1 — in progress, 2 — done. */
+    public static function set_state(int $step_id, int $state, ?string $day = null): void
     {
         global $wpdb;
-        $wpdb->update(self::steps_table(), ['done_on' => $done_on], ['id' => $step_id]);
+        $state = max(0, min(2, $state));
+        $wpdb->update(self::steps_table(), [
+            'state' => $state,
+            'done_on' => $state === 2 ? ($day ?? Hastan_Settings::now()->format('Y-m-d')) : null,
+        ], ['id' => $step_id]);
+    }
+
+    public static function get_step(int $step_id): ?array
+    {
+        global $wpdb;
+        $row = $wpdb->get_row($wpdb->prepare('SELECT * FROM ' . self::steps_table() . ' WHERE id = %d', $step_id), ARRAY_A);
+        return $row ?: null;
+    }
+
+    /** Steps as a tree: top-level steps, each with 'children'. */
+    public static function tree(int $goal_id): array
+    {
+        $all = self::steps($goal_id);
+        $top = [];
+        foreach ($all as $step) {
+            if (!(int) $step['parent_id']) {
+                $top[(int) $step['id']] = $step + ['children' => []];
+            }
+        }
+        foreach ($all as $step) {
+            if (isset($top[(int) $step['parent_id']])) {
+                $top[(int) $step['parent_id']]['children'][] = $step;
+            }
+        }
+        return array_values($top);
+    }
+
+    /** Steps that count for progress: leaves only. */
+    public static function leaves(int $goal_id): array
+    {
+        $all = self::steps($goal_id);
+        $parents = array_flip(array_map(fn ($s) => (int) $s['parent_id'], $all));
+        return array_values(array_filter($all, fn ($s) => !isset($parents[(int) $s['id']])));
     }
 
     public static function delete_step(int $step_id): void
     {
         global $wpdb;
         $wpdb->delete(self::steps_table(), ['id' => $step_id]);
+        $wpdb->delete(self::steps_table(), ['parent_id' => $step_id]);
     }
 
     public static function notes(int $goal_id, int $limit = 0): array
@@ -203,11 +285,13 @@ class Hastan_Goals
         if (!$goals) {
             return 'Целей нет.';
         }
-        $out = ['Цели (без напоминаний; шаги отмечаются один раз, заметки — дневник пути):'];
+        $out = ['Цели (без напоминаний; шаги: [ ] не начат, [~] в процессе, [x] готов; заметки — дневник пути):'];
         foreach ($goals as $goal) {
             $out[] = "#{$goal['id']} {$goal['title']}" . ($goal['due'] !== '' ? " — {$goal['due']}" : '') . ' (' . self::STATUSES[$goal['status']] . ')';
-            foreach (self::steps((int) $goal['id']) as $step) {
-                $out[] = "   шаг #{$step['id']} [" . ($step['done_on'] ? 'x' : ' ') . "] {$step['title']}";
+            $marks = [' ', '~', 'x'];
+            foreach (self::leaves((int) $goal['id']) as $step) {
+                $title = $step['code'] !== '' ? $step['code'] . ' ' . mb_strimwidth($step['title'], 0, 70, '…') : $step['title'];
+                $out[] = "   шаг #{$step['id']} [" . $marks[(int) $step['state']] . "] {$title}";
             }
             $notes = self::notes((int) $goal['id'], 3);
             if ($notes) {
@@ -244,6 +328,8 @@ class Hastan_Goals
                 'due' => $due !== '' ? ($due === '-' ? '' : $due) : $goal['due'],
                 'status' => $status !== '' ? $status : $goal['status'],
                 'position' => $goal['position'],
+                'kind' => $goal['kind'],
+                'subtitle' => $goal['subtitle'],
             ], $id);
         }
         foreach ((array) ($input['add_steps'] ?? []) as $step) {
@@ -254,10 +340,12 @@ class Hastan_Goals
         $day = !empty($input['date']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $input['date'])
             ? $input['date']
             : Hastan_Settings::now()->format('Y-m-d');
-        $own = array_column(self::steps($id), 'id');
-        foreach ((array) ($input['done_step_ids'] ?? []) as $step_id) {
-            if (in_array((string) $step_id, array_map('strval', $own), true)) {
-                self::set_step((int) $step_id, $day);
+        $own = array_map('intval', array_column(self::steps($id), 'id'));
+        foreach (['started_step_ids' => 1, 'done_step_ids' => 2, 'reset_step_ids' => 0] as $key => $state) {
+            foreach ((array) ($input[$key] ?? []) as $step_id) {
+                if (in_array((int) $step_id, $own, true)) {
+                    self::set_state((int) $step_id, $state, $day);
+                }
             }
         }
         if (trim((string) ($input['note'] ?? '')) !== '') {
