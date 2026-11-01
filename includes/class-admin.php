@@ -164,6 +164,19 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
             . '<input type="file" name="pack" accept=".zip"> <button class="button">' . (Hastan_Picture::exists() ? 'Загрузить новую картинку (начнётся заново)' : 'Загрузить') . '</button></form>';
     }
 
+    private static function movement_today(): string
+    {
+        $day = Hastan_Settings::now()->format('Y-m-d');
+        $parts = [];
+        if (($move = Hastan_Steps::get_move($day)) !== null) {
+            $parts[] = $move . ' из ' . Hastan_Steps::move_goal() . ' ккал подвижности';
+        }
+        if ($steps = Hastan_Steps::get($day)) {
+            $parts[] = $steps . ' шагов';
+        }
+        return $parts ? ' Сегодня пришло: ' . implode(', ', $parts) . '.' : '';
+    }
+
     public static function save_picture(): void
     {
         self::check('hastan_picture');
@@ -515,7 +528,7 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
         }
         echo '</td></tr>';
         echo '<tr><td>Адрес для шагов</td><td><input type="text" readonly class="large-text code" onclick="this.select()" value="' . esc_attr(Hastan_Steps::url()) . '"><br>'
-            . '<span class="description">Для автоматизации в «Командах» на iPhone. Держите в секрете.' . (($today_steps = Hastan_Steps::get(Hastan_Settings::now()->format("Y-m-d"))) !== null ? " Сегодня пришло: " . $today_steps . ' шагов.' : '') . '</span></td></tr>';
+            . '<span class="description">Для автоматизации в «Командах» на iPhone. Держите в секрете.' . self::movement_today() . '</span></td></tr>';
         echo '<tr><td>Коннектор для Claude</td><td><input type="text" readonly class="large-text code" onclick="this.select()" value="' . esc_attr(Hastan_MCP::url()) . '"><br>'
             . 'Добавьте этот адрес в Claude: Настройки → Коннекторы → Добавить свой коннектор. Никому его не показывайте: по нему можно читать и менять ваши задачи.</td></tr>';
         echo '<tr><td>Claude API</td><td>' . ($s['anthropic_key'] ? 'ключ сохранён' : '<b>нужен ключ</b>') . '</td></tr>';
@@ -547,6 +560,7 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
         self::field('Вечерняя проверка', '<input type="time" name="evening_time" value="' . esc_attr($s['evening_time']) . '">');
         self::field('Проекты сайта', '<input type="text" name="site_projects" value="' . esc_attr($s['site_projects']) . '" class="regular-text"><p class="description">Через запятую. У задач этих проектов нет сроков; если по ним долго нет работы, утром придёт напоминание.</p>');
         self::field('Напомнить про сайт после, часов', '<input type="number" min="24" max="720" name="site_idle_hours" value="' . (int) $s['site_idle_hours'] . '">');
+        self::field('Цель подвижности, ккал', '<input type="number" min="10" max="3000" name="move_goal" value="' . (int) $s['move_goal'] . '"><p class="description">Как в кольце «Подвижность» на iPhone. Используется, если автоматизация отправляет активную энергию.</p>');
         self::field('Норма шагов в день', '<input type="number" min="100" max="50000" name="steps_goal" value="' . (int) $s['steps_goal'] . '">');
         self::field('Норма калорий в день', '<input type="number" min="500" max="6000" name="kcal_limit" value="' . (int) $s['kcal_limit'] . '">');
         self::field('О вас и вашей работе', '<textarea name="about" rows="3" class="large-text">' . esc_textarea($s['about']) . '</textarea><p class="description">Помощник учитывает это в ответах и идеях.</p>');
@@ -607,6 +621,7 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
                     'evening_time' => preg_match('/^\d{2}:\d{2}$/', $_POST['evening_time'] ?? '') ? $_POST['evening_time'] : '20:00',
                     'about' => sanitize_textarea_field(wp_unslash($_POST['about'] ?? '')),
                     'site_projects' => sanitize_text_field(wp_unslash($_POST['site_projects'] ?? '')),
+                    'move_goal' => max(10, min(3000, (int) ($_POST['move_goal'] ?? 360))),
                     'steps_goal' => max(100, min(50000, (int) ($_POST['steps_goal'] ?? 8000))),
                     'kcal_limit' => max(500, min(6000, (int) ($_POST['kcal_limit'] ?? 2000))),
                     'site_idle_hours' => max(24, min(720, (int) ($_POST['site_idle_hours'] ?? 72))),

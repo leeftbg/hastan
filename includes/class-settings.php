@@ -19,6 +19,7 @@ class Hastan_Settings
             'mcp_key' => '',
             'steps_key' => '',
             'steps_goal' => 8000,
+            'move_goal' => 360,
             'chat_id' => '',
             'anthropic_key' => '',
             'model' => 'claude-opus-5-5',

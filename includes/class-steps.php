@@ -4,8 +4,10 @@ if (!defined('ABSPATH')) {
 }
 
 /**
- * Steps from the phone: an iOS Shortcuts automation posts the day's step count
- * from Apple Health to a secret URL. Reaching the goal colours the steps habit.
+ * Movement from the phone: an iOS Shortcuts automation posts the day's step
+ * count or active energy (the Move ring) from Apple Health to a secret URL.
+ * Reaching the goal colours the steps habit. When active energy is sent, its
+ * goal decides, so the square matches the closed ring on the phone.
  */
 class Hastan_Steps
 {
@@ -21,6 +23,7 @@ class Hastan_Steps
         dbDelta("CREATE TABLE $table (
   day date NOT NULL,
   steps int(10) unsigned NOT NULL DEFAULT 0,
+  move_kcal int(10) unsigned NULL,
   updated_at datetime NOT NULL,
   PRIMARY KEY  (day)
 ) $charset;");
@@ -47,6 +50,18 @@ class Hastan_Steps
         return max(100, (int) Hastan_Settings::get('steps_goal'));
     }
 
+    public static function move_goal(): int
+    {
+        return max(10, (int) Hastan_Settings::get('move_goal'));
+    }
+
+    public static function get_move(string $day): ?int
+    {
+        global $wpdb;
+        $kcal = $wpdb->get_var($wpdb->prepare('SELECT move_kcal FROM ' . self::table() . ' WHERE day = %s', $day));
+        return $kcal === null ? null : (int) $kcal;
+    }
+
     public static function get(string $day): ?int
     {
         global $wpdb;
@@ -68,15 +83,20 @@ class Hastan_Steps
             return new WP_REST_Response(['error' => 'not found'], 404);
         }
         $steps = $request->get_param('steps');
-        if ($steps === null || $steps === '') {
+        $move = $request->get_param('move');
+        $has = fn ($v) => $v !== null && $v !== '';
+        if (!$has($steps) && !$has($move)) {
             return new WP_REST_Response(['error' => 'no steps'], 400);
         }
         $day = (string) $request->get_param('date');
         if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $day)) {
             $day = Hastan_Settings::now()->format('Y-m-d');
         }
-        $count = self::parse_number($steps);
-        self::save($day, $count);
+        if ($has($move)) {
+            self::save_move($day, self::parse_number($move));
+            return new WP_REST_Response(['ok' => true, 'date' => $day, 'move' => self::get_move($day), 'goal' => self::move_goal()], 200);
+        }
+        self::save($day, self::parse_number($steps));
         return new WP_REST_Response(['ok' => true, 'date' => $day, 'steps' => self::get($day), 'goal' => self::goal()], 200);
     }
 
@@ -90,9 +110,28 @@ class Hastan_Steps
             $steps,
             gmdate('Y-m-d H:i:s')
         ));
-        if ((int) self::get($day) < self::goal()) {
-            return;
+        if (self::get_move($day) === null && (int) self::get($day) >= self::goal()) {
+            self::mark($day);
         }
+    }
+
+    /** Active energy, kcal: the Move ring. */
+    public static function save_move(string $day, int $kcal): void
+    {
+        global $wpdb;
+        $wpdb->query($wpdb->prepare(
+            'INSERT INTO ' . self::table() . ' (day, steps, move_kcal, updated_at) VALUES (%s, 0, %d, %s) ON DUPLICATE KEY UPDATE move_kcal = GREATEST(COALESCE(move_kcal, 0), VALUES(move_kcal)), updated_at = VALUES(updated_at)',
+            $day,
+            $kcal,
+            gmdate('Y-m-d H:i:s')
+        ));
+        if ((int) self::get_move($day) >= self::move_goal()) {
+            self::mark($day);
+        }
+    }
+
+    private static function mark(string $day): void
+    {
         foreach (Hastan_Habits::all() as $habit) {
             if (str_contains(mb_strtolower($habit['name']), 'шаг')) {
                 Hastan_Habits::mark((int) $habit['id'], $day, true);
