@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Hastan — личный ИИ-помощник
  * Description: Задачи, чек-листы и напоминания через Telegram. Разбирает сообщения с помощью Claude, утром присылает план, вечером проверяет, что сделано.
- * Version: 0.14.2
+ * Version: 0.14.3
  * Requires at least: 6.2
  * Requires PHP: 8.1
  * Author: xf
@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('HASTAN_VERSION', '0.14.2');
+define('HASTAN_VERSION', '0.14.3');
 define('HASTAN_DIR', plugin_dir_path(__FILE__));
 define('HASTAN_FILE', __FILE__);
 
