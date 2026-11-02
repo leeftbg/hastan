@@ -180,7 +180,7 @@ class Hastan_Food
             return;
         }
         foreach (Hastan_Habits::all() as $habit) {
-            if (str_contains(mb_strtolower($habit['name']), 'питание')) {
+            if (str_contains(mb_strtolower($habit['name']), 'питание') && !Hastan_Habits::is_cleared((int) $habit['id'], $day)) {
                 Hastan_Habits::mark((int) $habit['id'], $day, true);
             }
         }

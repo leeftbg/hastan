@@ -58,7 +58,16 @@ class Hastan_Habits
                 self::save(['name' => $name, 'every_days' => $every, 'position' => $pos]);
             }
         }
-        if (!get_option('hastan_habits_steps')) {
+        if (!get_option('hastan_food_cleared_1102')) {
+            // xf asked (2 Nov, 23:46) not to count food for that day: not everything was logged.
+            foreach (self::all(false) as $habit) {
+                if (str_contains(mb_strtolower($habit['name']), 'питание')) {
+                    self::mark((int) $habit['id'], '2026-11-02', false);
+                }
+            }
+            update_option('hastan_food_cleared_1102', 1, false);
+        }
+                if (!get_option('hastan_habits_steps')) {
             // Steps were asked for after the first list; add them once.
             $names = array_map(fn ($h) => mb_strtolower($h['name']), self::all(false));
             if (!in_array('норма шагов', $names, true)) {
@@ -118,9 +127,24 @@ class Hastan_Habits
         ));
     }
 
+    /** A day the user explicitly cleared: automatic marks (like the food check) leave it alone. */
+    public static function is_cleared(int $habit_id, string $day): bool
+    {
+        return !empty(((array) get_option('hastan_habit_cleared', []))[$habit_id . ':' . $day]);
+    }
+
     public static function mark(int $habit_id, string $day, bool $done): void
     {
         global $wpdb;
+        $cleared = (array) get_option('hastan_habit_cleared', []);
+        $key = $habit_id . ':' . $day;
+        if ($done) {
+            unset($cleared[$key]);
+        } else {
+            $cleared[$key] = 1;
+            $cleared = array_slice($cleared, -200, null, true);
+        }
+        update_option('hastan_habit_cleared', $cleared, false);
         if ($done) {
             $wpdb->query($wpdb->prepare('INSERT IGNORE INTO ' . self::marks_table() . ' (habit_id, day) VALUES (%d, %s)', $habit_id, $day));
         } else {
