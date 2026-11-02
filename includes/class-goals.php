@@ -79,6 +79,38 @@ class Hastan_Goals
             self::seed_exam();
             update_option('hastan_exam_seeded', 1, false);
         }
+        if (!get_option('hastan_course_seeded')) {
+            self::seed_course();
+            update_option('hastan_course_seeded', 1, false);
+        }
+    }
+
+    /** The psychology lectures: one step per video; details hold the duration and the link. */
+    private static function seed_course(): void
+    {
+        $course = require __DIR__ . '/course-psychology.php';
+        $id = self::save([
+            'title' => $course['title'],
+            'subtitle' => $course['subtitle'],
+            'kind' => 'course',
+            'due' => '',
+            'status' => 'active',
+            'position' => 1,
+        ]);
+        foreach ($course['lectures'] as $i => [$code, $title, $duration]) {
+            self::add_step($id, $title, $i, 0, $code, $duration . "\n" . $course['playlist'] . ($i + 1));
+        }
+    }
+
+    /** "2:25:09" → seconds. */
+    public static function seconds(string $duration): int
+    {
+        $parts = array_map('intval', explode(':', trim($duration)));
+        $s = 0;
+        foreach ($parts as $p) {
+            $s = $s * 60 + $p;
+        }
+        return $s;
     }
 
     /** The state exam: the "Экзамены" goal gets its syllabus, topic by topic. */
