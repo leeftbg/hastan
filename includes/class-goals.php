@@ -55,6 +55,7 @@ class Hastan_Goals
   details text NULL,
   position int(11) NOT NULL DEFAULT 0,
   state tinyint(1) NOT NULL DEFAULT 0,
+  repeats tinyint(3) unsigned NOT NULL DEFAULT 0,
   done_on date NULL,
   PRIMARY KEY  (id),
   KEY goal_id (goal_id)
@@ -79,6 +80,12 @@ class Hastan_Goals
             self::seed_exam();
             update_option('hastan_exam_seeded', 1, false);
         }
+        if (get_option('hastan_exam_seeded') && !get_option('hastan_exam_stages')) {
+            // The exam got four stages: what was "done" is now the last one.
+            $goals = self::goals_table();
+            $wpdb->query("UPDATE $steps s JOIN $goals g ON g.id = s.goal_id SET s.state = 3 WHERE g.kind = 'exam' AND s.state = 2");
+        }
+        update_option('hastan_exam_stages', 1, false);
         if (!get_option('hastan_course_seeded')) {
             self::seed_course();
             update_option('hastan_course_seeded', 1, false);
@@ -234,15 +241,33 @@ class Hastan_Goals
         return (int) $wpdb->insert_id;
     }
 
-    /** 0 — not started, 1 — in progress, 2 — done. */
+    /** Exam questions go through four stages (0 — not started, 1 — notes, 2 — cheat sheet, 3 — ready); other steps through three. */
+    public static function max_state(int $goal_id): int
+    {
+        $goal = self::get($goal_id);
+        return $goal && $goal['kind'] === 'exam' ? 3 : 2;
+    }
+
     public static function set_state(int $step_id, int $state, ?string $day = null): void
     {
         global $wpdb;
-        $state = max(0, min(2, $state));
+        $step = self::get_step($step_id);
+        if (!$step) {
+            return;
+        }
+        $max = self::max_state((int) $step['goal_id']);
+        $state = max(0, min($max, $state));
         $wpdb->update(self::steps_table(), [
             'state' => $state,
-            'done_on' => $state === 2 ? ($day ?? Hastan_Settings::now()->format('Y-m-d')) : null,
+            'done_on' => $state === $max ? ($day ?? Hastan_Settings::now()->format('Y-m-d')) : null,
         ], ['id' => $step_id]);
+    }
+
+    /** Repeats are separate from the stage: reading a question again before sleep. */
+    public static function set_repeats(int $step_id, int $repeats): void
+    {
+        global $wpdb;
+        $wpdb->update(self::steps_table(), ['repeats' => max(0, min(9, $repeats))], ['id' => $step_id]);
     }
 
     public static function get_step(int $step_id): ?array
@@ -317,13 +342,13 @@ class Hastan_Goals
         if (!$goals) {
             return 'Целей нет.';
         }
-        $out = ['Цели (без напоминаний; шаги: [ ] не начат, [~] в процессе, [x] готов; заметки — дневник пути):'];
+        $out = ['Цели (без напоминаний; шаги: [ ] не начат, [~] в процессе, [x] готов; у экзамена стадии [1] конспект, [2] шпаргалка, [x] готов, ↻N — сколько раз повторён; заметки — дневник пути):'];
         foreach ($goals as $goal) {
             $out[] = "#{$goal['id']} {$goal['title']}" . ($goal['due'] !== '' ? " — {$goal['due']}" : '') . ' (' . self::STATUSES[$goal['status']] . ')';
-            $marks = [' ', '~', 'x'];
+            $marks = $goal['kind'] === 'exam' ? [' ', '1', '2', 'x'] : [' ', '~', 'x'];
             foreach (self::leaves((int) $goal['id']) as $step) {
-                $title = $step['code'] !== '' ? $step['code'] . ' ' . mb_strimwidth($step['title'], 0, 70, '…') : $step['title'];
-                $out[] = "   шаг #{$step['id']} [" . $marks[(int) $step['state']] . "] {$title}";
+                $title = $step['code'] !== '' ? $step['code'] . ' ' . mb_strimwidth($step['title'], 0, 50, '…') : $step['title'];
+                $out[] = "   шаг #{$step['id']} [" . ($marks[(int) $step['state']] ?? 'x') . "] {$title}" . ((int) $step['repeats'] ? ' ↻' . (int) $step['repeats'] : '');
             }
             $notes = self::notes((int) $goal['id'], 3);
             if ($notes) {
@@ -373,11 +398,18 @@ class Hastan_Goals
             ? $input['date']
             : Hastan_Settings::now()->format('Y-m-d');
         $own = array_map('intval', array_column(self::steps($id), 'id'));
-        foreach (['started_step_ids' => 1, 'done_step_ids' => 2, 'reset_step_ids' => 0] as $key => $state) {
+        $max = self::max_state($id);
+        foreach (['started_step_ids' => 1, 'notes_step_ids' => 1, 'cheatsheet_step_ids' => 2, 'done_step_ids' => $max, 'reset_step_ids' => 0] as $key => $state) {
             foreach ((array) ($input[$key] ?? []) as $step_id) {
                 if (in_array((int) $step_id, $own, true)) {
                     self::set_state((int) $step_id, $state, $day);
                 }
+            }
+        }
+        foreach ((array) ($input['repeated_step_ids'] ?? []) as $step_id) {
+            $step = in_array((int) $step_id, $own, true) ? self::get_step((int) $step_id) : null;
+            if ($step) {
+                self::set_repeats((int) $step_id, (int) $step['repeats'] + 1);
             }
         }
         if (trim((string) ($input['note'] ?? '')) !== '') {

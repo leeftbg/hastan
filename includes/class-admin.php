@@ -367,8 +367,10 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
     private static function goal_progress(int $id): array
     {
         $leaves = Hastan_Goals::leaves($id);
-        $count = fn ($state) => count(array_filter($leaves, fn ($s) => (int) $s['state'] === $state));
-        return [$count(2), $count(1), count($leaves)];
+        $max = Hastan_Goals::max_state($id);
+        $done = count(array_filter($leaves, fn ($s) => (int) $s['state'] >= $max));
+        $doing = count(array_filter($leaves, fn ($s) => (int) $s['state'] > 0 && (int) $s['state'] < $max));
+        return [$done, $doing, count($leaves)];
     }
 
     public static function goals_page(): void
@@ -603,13 +605,17 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
         $id = (int) $goal['id'];
         $tree = Hastan_Goals::tree($id);
         [$done, $doing, $total] = self::goal_progress($id);
-        $pct = $total ? round($done / $total * 100) : 0;
-        $states = ['не е започнат', 'в процес', 'готов'];
+        $leaves = Hastan_Goals::leaves($id);
+        $points = array_sum(array_map(fn ($q) => min(3, (int) $q['state']), $leaves));
+        $pct = $total ? round($points / (3 * $total) * 100) : 0;
+        $repeated = count(array_filter($leaves, fn ($q) => (int) $q['repeats'] > 0));
+        $by_state = array_count_values(array_map(fn ($q) => (int) $q['state'], $leaves));
+        $states = ['не е започнат', 'конспект', 'пищов', 'готов'];
         echo '<div class="wrap hx" lang="bg"><a class="hg-back" href="' . esc_url(self::goal_url()) . '">← Все цели</a>';
         self::notice();
         echo self::goal_styles();
         echo '<style>
-.hx{--ink:#1f2a37;--muted:#7a7466;--paper:#fbf8f2;--line:#e6dfd0;--done:#2f7d5b;--doing:#e3a33b;--empty:#e9e3d6;max-width:1180px}
+.hx{--ink:#1f2a37;--muted:#7a7466;--paper:#fbf8f2;--line:#e6dfd0;--done:#2f7d5b;--doing:#e3a33b;--st1:#f1d9a6;--st2:#e3a33b;--empty:#e9e3d6;max-width:1180px}
 .hx-hero{display:flex;gap:28px;align-items:center;justify-content:space-between;flex-wrap:wrap;background:linear-gradient(135deg,#1f2a37,#2d3e52);color:#fff;border-radius:18px;padding:28px 32px;margin:8px 0 18px}
 .hx-hero h1{color:#fff;font-size:30px;margin:0 0 6px;padding:0;font-family:Georgia,"Times New Roman",serif;font-weight:600}
 .hx-hero .sub{opacity:.8;font-size:14px}.hx-hero .due{display:inline-block;margin-top:12px;background:rgba(255,255,255,.12);border-radius:20px;padding:4px 12px;font-size:12px;letter-spacing:.04em}
@@ -617,7 +623,14 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
 .hx-ring .n{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:28px;font-weight:600}
 .hx-ring .n small{font-size:11px;font-weight:400;opacity:.75;margin-top:2px}
 .hx-strip{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 8px}.hx-strip a{display:flex;gap:3px;text-decoration:none;padding:4px;border-radius:6px}
-.hx-strip a:hover{background:#efe9dc}.hx-strip i{width:14px;height:14px;border-radius:3px;background:var(--empty)}.hx-strip i.s1{background:var(--doing)}.hx-strip i.s2{background:var(--done)}
+.hx-strip a:hover{background:#efe9dc}.hx-strip i{width:14px;height:14px;border-radius:3px;background:var(--empty)}.hx-strip i.s1{background:var(--st1)}.hx-strip i.s2{background:var(--st2)}.hx-strip i.s3{background:var(--done)}
+.hx .hg-dot{position:relative}.hx .s1 .hg-dot{border-color:var(--st2);background:conic-gradient(var(--st2) 0 120deg,#fff 120deg)}
+.hx .s2 .hg-dot{border-color:var(--st2);background:conic-gradient(var(--st2) 0 240deg,#fff 240deg)}.hx .s3 .hg-dot{border-color:var(--done);background:var(--done)}
+.hx-stage{flex:none;font-size:11px;color:var(--muted);margin-top:3px;min-width:58px}.hx-q.s3 .t{color:var(--muted)}
+.hx-rep{margin-left:auto;flex:none}.hx-rep button{border:1px solid var(--line);background:#fff;border-radius:12px;padding:1px 8px;cursor:pointer;font-size:12px;color:var(--muted);display:inline-flex;gap:3px;align-items:center;line-height:18px}
+.hx-rep button:hover{border-color:#8fb3d9}.hx-rep b{width:6px;height:6px;border-radius:50%;background:#e0d9c9;display:inline-block}.hx-rep b.on{background:#3b7bbf}
+.hx-rep.r3 button{border-color:#8fb3d9;color:#3b7bbf}
+.hx-hero .rep{display:inline-block;margin:12px 0 0 6px;background:rgba(143,179,217,.18);border-radius:20px;padding:4px 12px;font-size:12px}
 .hx-legend{display:flex;gap:16px;color:var(--muted);font-size:12px;margin-bottom:18px;flex-wrap:wrap}.hx-legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
 .hx-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:16px}
 .hx-topic{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:18px 20px;scroll-margin-top:50px}
@@ -628,7 +641,7 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
 .hx-q{border-top:1px solid var(--line);padding:10px 0}.hx-q:last-child{padding-bottom:0}
 .hx-row{display:flex;gap:10px;align-items:flex-start}.hx-row form{flex:none;margin:0;line-height:0}
 .hx-code{flex:none;font-size:11px;font-weight:600;color:var(--muted);background:#efe9dc;border-radius:6px;padding:2px 6px;margin-top:2px}
-.hx-q .t{font-size:13.5px;line-height:1.45;color:var(--ink)}.hx-q.s2 .t{color:var(--muted)}
+.hx-q .t{font-size:13.5px;line-height:1.45;color:var(--ink)}
 .hx-q details{margin:6px 0 0 66px}.hx-q summary{cursor:pointer;color:#2271b1;font-size:12px}
 .hx-q ol{margin:6px 0 0 18px;font-size:12.5px;line-height:1.5;color:#3c434a}.hx-q ol li{margin-bottom:3px}
 .hx-hint{color:var(--muted);font-size:12px;margin:14px 0 0}
@@ -638,11 +651,11 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
         $c = 2 * M_PI * $r;
         echo '<div class="hx-hero"><div><h1>' . esc_html($goal['title']) . '</h1>'
             . ($goal['subtitle'] !== '' ? '<div class="sub">' . esc_html($goal['subtitle']) . '</div>' : '')
-            . ($goal['due'] !== '' ? '<span class="due">' . esc_html(mb_strtoupper($goal['due'])) . '</span>' : '') . '</div>'
+            . ($goal['due'] !== '' ? '<span class="due">' . esc_html(mb_strtoupper($goal['due'])) . '</span>' : '')
+            . '<span class="rep">↻ повторени ' . $repeated . ' от ' . $total . '</span></div>'
             . '<div class="hx-ring"><svg width="120" height="120"><circle cx="60" cy="60" r="' . $r . '" fill="none" stroke="rgba(255,255,255,.14)" stroke-width="10"/>'
-            . '<circle cx="60" cy="60" r="' . $r . '" fill="none" stroke="#e3a33b" stroke-width="10" stroke-dasharray="' . round(($done + $doing) / max(1, $total) * $c, 1) . ' ' . round($c, 1) . '" stroke-linecap="round"/>'
-            . '<circle cx="60" cy="60" r="' . $r . '" fill="none" stroke="#5fc293" stroke-width="10" stroke-dasharray="' . round($done / max(1, $total) * $c, 1) . ' ' . round($c, 1) . '" stroke-linecap="round"/></svg>'
-            . '<div class="n">' . $pct . '%<small>' . $done . ' от ' . $total . ' въпроса</small></div></div></div>';
+            . '<circle cx="60" cy="60" r="' . $r . '" fill="none" stroke="#5fc293" stroke-width="10" stroke-dasharray="' . round($pct / 100 * $c, 1) . ' ' . round($c, 1) . '" stroke-linecap="round"/></svg>'
+            . '<div class="n">' . $pct . '%<small>готови ' . $done . ' от ' . $total . '</small></div></div></div>';
 
         echo '<div class="hx-strip">';
         foreach ($tree as $topic) {
@@ -652,22 +665,34 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
             }
             echo '</a>';
         }
-        echo '</div><div class="hx-legend"><span><i style="background:var(--empty)"></i>' . $states[0] . '</span><span><i style="background:var(--doing)"></i>' . $states[1]
-            . ' (' . $doing . ')</span><span><i style="background:var(--done)"></i>' . $states[2] . ' (' . $done . ')</span></div>';
+        $colors = ['var(--empty)', 'var(--st1)', 'var(--st2)', 'var(--done)'];
+        echo '</div><div class="hx-legend">';
+        foreach ($states as $k => $label) {
+            echo '<span><i style="background:' . $colors[$k] . '"></i>' . $label . ($k && !empty($by_state[$k]) ? ' (' . $by_state[$k] . ')' : '') . '</span>';
+        }
+        echo '</div>';
 
         echo '<div class="hx-grid">';
         foreach ($tree as $topic) {
             $qs = $topic['children'];
-            $ready = count(array_filter($qs, fn ($q) => (int) $q['state'] === 2));
+            $ready = count(array_filter($qs, fn ($q) => (int) $q['state'] === 3));
             echo '<section class="hx-topic' . ($qs && $ready === count($qs) ? ' all' : '') . '" id="t' . esc_attr($topic['code']) . '">'
                 . '<div class="hx-head"><div class="hx-num">' . esc_html(str_pad($topic['code'], 2, '0', STR_PAD_LEFT)) . '</div><div><h3>' . esc_html($topic['title']) . '</h3>'
                 . '<div class="c">Тема ' . esc_html($topic['code']) . ' · готови ' . $ready . ' от ' . count($qs) . '</div></div></div>';
             foreach ($qs as $q) {
                 $state = (int) $q['state'];
                 $books = array_filter(explode("\n", (string) $q['details']));
-                echo '<div class="hx-q s' . $state . '"><div class="hx-row">'
-                    . self::goal_form('step_cycle', ['step' => (int) $q['id'], 'anchor' => 't' . $topic['code']], '<button class="hg-dot" title="' . esc_attr($states[$state]) . '">' . ($state === 2 ? '✓' : '') . '</button>', '', '')
-                    . '<span class="hx-code">' . esc_html($q['code']) . '</span><span class="t">' . esc_html($q['title']) . '</span></div>';
+                echo '<div class="hx-q s' . $state . '"><div class="hx-row">';
+                $reps = (int) $q['repeats'];
+                $dots = '';
+                for ($i = 1; $i <= 3; $i++) {
+                    $dots .= '<b' . ($reps >= $i ? ' class="on"' : '') . '></b>';
+                }
+                echo self::goal_form('step_cycle', ['step' => (int) $q['id'], 'anchor' => 't' . $topic['code']], '<button class="hg-dot" title="' . esc_attr($states[min(3, $state)]) . ' — натиснете за следващ етап">' . ($state === 3 ? '✓' : '') . '</button>', '', '')
+                    . '<span class="hx-code">' . esc_html($q['code']) . '</span><span class="t">' . esc_html($q['title'])
+                    . ($state ? ' <span class="hx-stage">· ' . esc_html($states[min(3, $state)]) . '</span>' : '') . '</span>'
+                    . self::goal_form('step_repeat', ['step' => (int) $q['id'], 'anchor' => 't' . $topic['code']], '<button title="Повторен ' . $reps . ' пъти. Натиснете, когато повторите">↻ ' . $dots . '</button>', '', 'class="hx-rep r' . min(3, $reps) . '"')
+                    . '</div>';
                 if ($books) {
                     echo '<details><summary>Литература (' . count($books) . ')</summary><ol>';
                     foreach ($books as $book) {
@@ -679,7 +704,7 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
             }
             echo '</section>';
         }
-        echo '</div><p class="hx-hint">Кръгчето: не е започнат → в процес → готов. Можете и да пишете на бота: «разобрала 7.2».</p>';
+        echo '</div><p class="hx-hint">Кръгчето: не е започнат → конспект → пищов → готов. ↻ — колко пъти сте повторили въпроса (до 3), не влияе на процента. На бота: «конспект 7.2», «шпаргалка 7.1», «повторила 1.1».</p>';
         echo self::goal_footer($goal, ['diary' => 'Дневник', 'write' => 'Запиши', 'what' => 'Какво направих', 'empty' => 'Още няма записи.']);
         echo '</div>';
     }
@@ -717,7 +742,14 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
             case 'step_cycle':
                 $step = Hastan_Goals::get_step((int) ($_POST['step'] ?? 0));
                 if ($step) {
-                    Hastan_Goals::set_state((int) $step['id'], ((int) $step['state'] + 1) % 3);
+                    Hastan_Goals::set_state((int) $step['id'], ((int) $step['state'] + 1) % (Hastan_Goals::max_state((int) $step['goal_id']) + 1));
+                    $back = (int) $step['goal_id'];
+                }
+                break;
+            case 'step_repeat':
+                $step = Hastan_Goals::get_step((int) ($_POST['step'] ?? 0));
+                if ($step) {
+                    Hastan_Goals::set_repeats((int) $step['id'], ((int) $step['repeats'] + 1) % 4);
                     $back = (int) $step['goal_id'];
                 }
                 break;
