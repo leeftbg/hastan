@@ -234,6 +234,7 @@ PROMPT;
         return implode("\n", $out);
     }
 
+    /** Only small tools are strict: the API refuses when the strict grammar of all tools is too large. */
     public static function tools(): array
     {
         $templates = array_keys(Hastan_Templates::all());
@@ -241,7 +242,6 @@ PROMPT;
             [
                 'name' => 'add_task',
                 'description' => 'Создаёт задачу. Если указан шаблон, к ней добавляется его чек-лист.',
-                'strict' => true,
                 'inputSchema' => [
                     'type' => 'object',
                     'properties' => [
@@ -260,7 +260,6 @@ PROMPT;
             [
                 'name' => 'update_task',
                 'description' => 'Меняет задачу или пункт чек-листа: статус (open, done, cancelled), срок, название, заметку, пометку «по желанию» для пункта. Поля, которые не меняются, передай как null.',
-                'strict' => true,
                 'inputSchema' => [
                     'type' => 'object',
                     'properties' => [
@@ -317,7 +316,6 @@ PROMPT;
             [
                 'name' => 'log_food',
                 'description' => 'Записывает съеденное. Название бери точно как в базе продуктов, если продукт там есть. Для нового продукта укажи обычную калорийность на 100 г (и обычную порцию для штучных), он сохранится в базу как оценка.',
-                'strict' => true,
                 'inputSchema' => [
                     'type' => 'object',
                     'properties' => [
@@ -344,7 +342,6 @@ PROMPT;
             [
                 'name' => 'save_food',
                 'description' => 'Добавляет продукт или блюдо в базу или исправляет его калорийность (например, по этикетке). Для своего блюда можно указать ккал на 100 г и порцию.',
-                'strict' => true,
                 'inputSchema' => [
                     'type' => 'object',
                     'properties' => [
@@ -376,7 +373,6 @@ PROMPT;
             [
                 'name' => 'save_idea',
                 'description' => 'Сохраняет идею пользователя (не задачу) в отдельный раздел «Идеи» на сайте. Напоминаний по идеям нет.',
-                'strict' => true,
                 'inputSchema' => [
                     'type' => 'object',
                     'properties' => [
@@ -392,7 +388,6 @@ PROMPT;
             [
                 'name' => 'update_goal',
                 'description' => 'Создаёт или меняет цель (не привычку): добавляет шаги, отмечает пройденные шаги, пишет заметку в дневник цели. Пустые поля ничего не меняют.',
-                'strict' => true,
                 'inputSchema' => [
                     'type' => 'object',
                     'properties' => [
@@ -414,7 +409,6 @@ PROMPT;
             [
                 'name' => 'add_items',
                 'description' => 'Добавляет пункты в чек-лист существующей задачи.',
-                'strict' => true,
                 'inputSchema' => [
                     'type' => 'object',
                     'properties' => [
