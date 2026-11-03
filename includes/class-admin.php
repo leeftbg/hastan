@@ -838,6 +838,7 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
 .ht-e .ef input[type=text]{flex:1;border:1px solid var(--turq);border-radius:10px;padding:6px 10px;font-size:14px;font-family:Georgia,serif}
 .ht-e .ef .ht-btn{padding:6px 14px;font-size:13px}
 .ht-e.note{color:var(--ink);font-size:14px;line-height:1.5}.ht-e.note .star{flex:none;color:var(--coral);font-size:12px}
+.ht-e.note .txt{flex:1 1 0;min-width:0}.ht-e .acts{flex:none}
 .ht-e .x{border:0;background:none;color:#b32d2e;cursor:pointer;font-size:16px}
 .ht-empty{text-align:center;padding:34px 20px;color:var(--muted)}.ht-empty .w{font-family:Georgia,serif;font-size:26px;color:var(--cobalt);margin-bottom:6px}
 .ht-dict{position:sticky;top:44px}
@@ -903,7 +904,7 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
                     . self::goal_form('tr_edit', ['note' => (int) $e['id'], 'goal' => $id, 'anchor' => $anchor], '<button class="ht-btn">Сохранить</button>',
                         '<input type="text" name="line" value="' . esc_attr(Hastan_Turkish::as_line($e)) . '"><span class="ht-keys"><button type="button" class="hlb">Выделить</button></span>', 'class="ef"');
                 if ($e['tr'] === '') {
-                    echo '<div class="ht-e note"><span class="star">✦</span><span>' . Hastan_Turkish::mark($e['body']) . '</span>' . $del . '</div>';
+                    echo '<div class="ht-e note"><span class="star">✦</span><span class="txt">' . Hastan_Turkish::mark($e['body']) . '</span>' . $del . '</div>';
                 } else {
                     echo '<div class="ht-e ' . esc_attr($e['kind']) . '" lang="tr"><span class="tr">' . Hastan_Turkish::mark($e['tr']) . '</span>' . ($e['body'] !== '' ? '<span class="ru" lang="ru">' . Hastan_Turkish::mark($e['body']) . '</span>' : '') . $del . '</div>';
                 }
