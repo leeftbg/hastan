@@ -200,7 +200,9 @@ class Hastan_Habits
             $last = self::last_done($id) ?? 'never';
             if ($days > (int) $habit['every_days'] && ($notified[$id] ?? null) !== $last) {
                 $notified[$id] = $last;
-                $out[] = "{$habit['name']} ({$days} дн.)";
+                // Today is not over yet: count only the full days missed since the last mark.
+                $missed = $days - 1;
+                $out[] = "{$habit['name']} ({$missed} дн.)";
             }
         }
         update_option(self::NOTIFIED_OPTION, $notified, false);

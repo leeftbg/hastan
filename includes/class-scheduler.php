@@ -83,7 +83,7 @@ class Hastan_Scheduler
         Hastan_Food::close_day($now->modify('-1 day')->format('Y-m-d'));
         $lapses = Hastan_Habits::lapses($now);
         if ($lapses) {
-            $out[] = '— Давно не было: ' . implode(', ', $lapses);
+            $out[] = '— Пропущено: ' . implode(', ', $lapses);
         }
         $out = array_merge($out, self::inconsistencies());
         if ($out) {
