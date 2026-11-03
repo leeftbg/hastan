@@ -145,9 +145,40 @@ class Hastan_Turkish
         return $e['tr'] === '' ? $e['body'] : $e['tr'] . ($e['body'] !== '' ? ' — ' . $e['body'] : '');
     }
 
+    public static function is_bullet(string $line): bool
+    {
+        return (bool) preg_match('/^\s*(?:[•·]|[-–—](?=\s))/u', $line);
+    }
+
+    /** A note with a list: lines starting with "- " become points. */
+    public static function note_html(string $body): string
+    {
+        $html = '';
+        $list = false;
+        foreach (preg_split('/\R/u', $body) as $line) {
+            if (trim($line) === '') {
+                continue;
+            }
+            if (self::is_bullet($line)) {
+                $html .= ($list ? '' : '<ul>') . '<li>' . self::mark(trim(preg_replace('/^\s*(?:[•·]|[-–—])\s*/u', '', $line))) . '</li>';
+                $list = true;
+            } else {
+                $html .= ($list ? '</ul>' : '') . '<p>' . self::mark(trim($line)) . '</p>';
+                $list = false;
+            }
+        }
+        return $html . ($list ? '</ul>' : '');
+    }
+
     public static function update(int $note_id, string $line): void
     {
         global $wpdb;
+        $lines = array_values(array_filter(array_map('trim', preg_split('/\R/u', $line)), 'strlen'));
+        if (count($lines) > 1) {
+            $body = implode("\n", array_map(fn ($l) => self::is_bullet($l) ? '- ' . trim(preg_replace('/^\s*(?:[•·]|[-–—])\s*/u', '', $l)) : $l, $lines));
+            $wpdb->update(Hastan_Goals::notes_table(), ['tr' => '', 'body' => $body, 'kind' => 'note'], ['id' => $note_id]);
+            return;
+        }
         $e = self::parse($line);
         if ($e) {
             $wpdb->update(Hastan_Goals::notes_table(), ['tr' => mb_substr($e['tr'], 0, 255), 'body' => $e['ru'], 'kind' => $e['kind']], ['id' => $note_id]);
@@ -197,15 +228,24 @@ class Hastan_Turkish
      */
     public static function add_lines(int $goal_id, string $day, string $text): int
     {
-        $n = 0;
+        $items = [];
         foreach (preg_split('/\R/u', $text) as $line) {
             $e = self::parse($line);
-            if ($e) {
-                self::add($goal_id, $day, $e['kind'], $e['tr'], $e['ru']);
-                $n++;
+            if (!$e) {
+                continue;
             }
+            // "- …" right after a note is a point of that note's list.
+            $last = count($items) - 1;
+            if ($e['kind'] === 'note' && $last >= 0 && $items[$last]['kind'] === 'note' && self::is_bullet($line)) {
+                $items[$last]['ru'] .= "\n- " . $e['ru'];
+                continue;
+            }
+            $items[] = $e;
         }
-        return $n;
+        foreach ($items as $e) {
+            self::add($goal_id, $day, $e['kind'], $e['tr'], $e['ru']);
+        }
+        return count($items);
     }
 
     /** Entries newest day first, in the order they were written within a day. */
