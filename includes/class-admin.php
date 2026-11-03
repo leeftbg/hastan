@@ -509,9 +509,9 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
     {
         $id = (int) $goal['id'];
         $lectures = Hastan_Goals::steps($id);
-        $states = ['не начата', 'смотрю', 'просмотрена'];
+        $states = ['не начата', 'смотрю', 'просмотрена', 'конспект готов'];
         $total = $watched = 0;
-        $done = $doing = 0;
+        $done = $doing = $notes = 0;
         $next = null;
         foreach ($lectures as &$l) {
             [$duration, $url] = array_pad(explode("\n", (string) $l['details'], 2), 2, '');
@@ -519,9 +519,10 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
             $l['url'] = $url;
             $sec = Hastan_Goals::seconds($duration);
             $total += $sec;
-            if ((int) $l['state'] === 2) {
+            if ((int) $l['state'] >= 2) {
                 $watched += $sec;
                 $done++;
+                $notes += (int) $l['state'] === 3 ? 1 : 0;
             } elseif ((int) $l['state'] === 1) {
                 $doing++;
                 $next = $next ?? $l;
@@ -556,14 +557,17 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
 .hc-play{display:inline-flex;align-items:center;gap:8px;background:#c4302b;color:#fff!important;text-decoration:none;border-radius:24px;padding:9px 18px;font-weight:600;margin-left:auto}
 .hc-play:hover{background:#a82722}
 .hc-strip{display:grid;grid-template-columns:repeat(27,1fr);gap:4px;max-width:760px;margin:0 0 6px}.hc-strip a{aspect-ratio:1;border-radius:3px;background:var(--empty);display:block}
-.hc-strip a.s1{background:var(--doing)}.hc-strip a.s2{background:var(--done)}
+.hc-strip a.s1{background:var(--doing)}.hc-strip a.s2{background:#9fd0b6}.hc-strip a.s3{background:var(--done)}
+.hc .s1 .hg-dot{border-color:var(--doing);background:conic-gradient(var(--doing) 0 120deg,#fff 120deg)}
+.hc .s2 .hg-dot{border-color:var(--done);background:conic-gradient(var(--done) 0 240deg,#fff 240deg)}.hc .s3 .hg-dot{border-color:var(--done);background:var(--done)}
+.hc-stage{font-size:11px;color:var(--muted);font-weight:400}
 .hc-legend{display:flex;gap:16px;color:var(--muted);font-size:12px;margin-bottom:18px;flex-wrap:wrap}.hc-legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
 .hc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
 .hc-l{display:flex;gap:12px;align-items:flex-start;background:#fbf8f2;border:1px solid var(--line);border-radius:12px;padding:12px 14px;scroll-margin-top:50px}
-.hc-l.s2{background:#f3faf6;border-color:#bfdccd}.hc-l.s1{border-color:#efc77f;background:#fffaf0}
+.hc-l.s2{background:#f6fbf8;border-color:#cfe5d8}.hc-l.s3{background:#eef8f2;border-color:#9fc9b4}.hc-l.s1{border-color:#efc77f;background:#fffaf0}
 .hc-l form{flex:none;margin:2px 0 0;line-height:0}
 .hc-num{font-family:"Segoe Print","Comic Sans MS",cursive;font-size:12px;color:var(--muted)}
-.hc-t{font-size:14px;line-height:1.35;color:#1f2a37;font-weight:500;margin:1px 0 4px}.hc-l.s2 .hc-t{color:var(--muted)}
+.hc-t{font-size:14px;line-height:1.35;color:#1f2a37;font-weight:500;margin:1px 0 4px}.hc-l.s3 .hc-t{color:var(--muted)}
 .hc-meta{display:flex;gap:10px;align-items:center;font-size:12px;color:var(--muted)}
 .hc-meta a{text-decoration:none;color:#c4302b;font-weight:600}
 @media (max-width:600px){.hc-hero{padding:22px;border-width:7px}.hc-strip{grid-template-columns:repeat(18,1fr)}.hc-play{margin-left:0}}
@@ -572,7 +576,7 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
         $c = 2 * M_PI * $r;
         echo '<div class="hc-hero"><span class="psi">ψ</span><div><h1>' . esc_html($goal['title']) . '</h1>'
             . ($goal['subtitle'] !== '' ? '<div class="sub">' . esc_html($goal['subtitle']) . '</div>' : '')
-            . '<div class="stats"><span><b>' . $done . '</b>из ' . $count . ' лекций</span><span><b>' . esc_html(self::hours($watched)) . '</b>просмотрено</span>'
+            . '<div class="stats"><span><b>' . $done . '</b>из ' . $count . ' лекций</span><span><b>' . $notes . '</b>конспектов</span><span><b>' . esc_html(self::hours($watched)) . '</b>просмотрено</span>'
             . '<span><b>' . esc_html(self::hours(max(0, $total - $watched))) . '</b>осталось</span></div></div>'
             . '<div class="hc-ring"><svg width="128" height="128"><circle cx="64" cy="64" r="' . $r . '" fill="none" stroke="rgba(244,241,232,.15)" stroke-width="9"/>'
             . '<circle cx="64" cy="64" r="' . $r . '" fill="none" stroke="#f4f1e8" stroke-width="9" stroke-dasharray="' . round($watched / max(1, $total) * $c, 1) . ' ' . round($c, 1) . '" stroke-linecap="round"/></svg>'
@@ -590,19 +594,20 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
             echo '<a class="s' . (int) $l['state'] . '" href="#l' . (int) $l['id'] . '" title="' . esc_attr($l['code'] . ' ' . $l['title']) . '"></a>';
         }
         echo '</div><div class="hc-legend"><span><i style="background:var(--empty)"></i>' . $states[0] . '</span><span><i style="background:var(--doing)"></i>' . $states[1]
-            . ($doing ? ' (' . $doing . ')' : '') . '</span><span><i style="background:var(--done)"></i>' . $states[2] . ' (' . $done . ')</span></div>';
+            . ($doing ? ' (' . $doing . ')' : '') . '</span><span><i style="background:#9fd0b6"></i>' . $states[2] . ' (' . ($done - $notes) . ')</span>'
+            . '<span><i style="background:var(--done)"></i>' . $states[3] . ' (' . $notes . ')</span></div>';
 
         echo '<div class="hc-grid">';
         foreach ($lectures as $l) {
             $state = (int) $l['state'];
             echo '<div class="hc-l s' . $state . '" id="l' . (int) $l['id'] . '">'
-                . self::goal_form('step_cycle', ['step' => (int) $l['id'], 'anchor' => 'l' . (int) $l['id']], '<button class="hg-dot" title="' . esc_attr($states[$state]) . '">' . ($state === 2 ? '✓' : '') . '</button>', '', '')
-                . '<div><div class="hc-num">Лекция ' . esc_html($l['code']) . '</div><div class="hc-t">' . esc_html($l['title']) . '</div><div class="hc-meta">'
+                . self::goal_form('step_cycle', ['step' => (int) $l['id'], 'anchor' => 'l' . (int) $l['id']], '<button class="hg-dot" title="' . esc_attr($states[min(3, $state)]) . ' — нажмите для следующего шага">' . ($state === 3 ? '✓' : '') . '</button>', '', '')
+                . '<div><div class="hc-num">Лекция ' . esc_html($l['code']) . '</div><div class="hc-t">' . esc_html($l['title']) . ($state >= 2 ? ' <span class="hc-stage">· ' . esc_html($states[min(3, $state)]) . '</span>' : '') . '</div><div class="hc-meta">'
                 . ($l['duration'] !== '' ? '<span>' . esc_html($l['duration']) . '</span>' : '')
                 . ($l['url'] !== '' ? '<a href="' . esc_url($l['url']) . '" target="_blank" rel="noopener">▶ YouTube</a>' : '')
                 . '</div></div></div>';
         }
-        echo '</div><p class="hx-hint" style="color:var(--muted);font-size:12px;margin-top:14px">Кружок: не начата → смотрю → просмотрена. Можно и написать боту: «посмотрела лекцию 12».</p>';
+        echo '</div><p class="hx-hint" style="color:var(--muted);font-size:12px;margin-top:14px">Кружок: не начата → смотрю → просмотрена → конспект готов. Можно и написать боту: «посмотрела лекцию 12», «конспект 12».</p>';
         echo self::goal_footer($goal, ['diary' => 'Конспект и мысли', 'write' => 'Записать', 'what' => 'Что запомнилось', 'empty' => 'Пока пусто.']);
         echo '</div>';
     }

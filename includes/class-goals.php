@@ -241,11 +241,11 @@ class Hastan_Goals
         return (int) $wpdb->insert_id;
     }
 
-    /** Exam questions go through four stages (0 — not started, 1 — notes, 2 — cheat sheet, 3 — ready); other steps through three. */
+    /** Four stages for an exam question (not started, notes, cheat sheet, ready) and a lecture (not started, watching, watched, notes done); three for other steps. */
     public static function max_state(int $goal_id): int
     {
         $goal = self::get($goal_id);
-        return $goal && $goal['kind'] === 'exam' ? 3 : 2;
+        return $goal && in_array($goal['kind'], ['exam', 'course'], true) ? 3 : 2;
     }
 
     public static function set_state(int $step_id, int $state, ?string $day = null): void
@@ -342,10 +342,10 @@ class Hastan_Goals
         if (!$goals) {
             return 'Целей нет.';
         }
-        $out = ['Цели (без напоминаний; шаги: [ ] не начат, [~] в процессе, [x] готов; у экзамена стадии [1] конспект, [2] шпаргалка, [x] готов, ↻N — сколько раз повторён; заметки — дневник пути):'];
+        $out = ['Цели (без напоминаний; шаги: [ ] не начат, [~] в процессе, [x] готов; у экзамена стадии [1] конспект, [2] шпаргалка, [x] готов; у лекции [~] смотрю, [w] просмотрена, [x] конспект готов; ↻N — сколько раз повторён; заметки — дневник пути):'];
         foreach ($goals as $goal) {
             $out[] = "#{$goal['id']} {$goal['title']}" . ($goal['due'] !== '' ? " — {$goal['due']}" : '') . ' (' . self::STATUSES[$goal['status']] . ')';
-            $marks = $goal['kind'] === 'exam' ? [' ', '1', '2', 'x'] : [' ', '~', 'x'];
+            $marks = ['exam' => [' ', '1', '2', 'x'], 'course' => [' ', '~', 'w', 'x']][$goal['kind']] ?? [' ', '~', 'x'];
             foreach (self::leaves((int) $goal['id']) as $step) {
                 $title = $step['code'] !== '' ? $step['code'] . ' ' . mb_strimwidth($step['title'], 0, 50, '…') : $step['title'];
                 $out[] = "   шаг #{$step['id']} [" . ($marks[(int) $step['state']] ?? 'x') . "] {$title}" . ((int) $step['repeats'] ? ' ↻' . (int) $step['repeats'] : '');
@@ -399,7 +399,7 @@ class Hastan_Goals
             : Hastan_Settings::now()->format('Y-m-d');
         $own = array_map('intval', array_column(self::steps($id), 'id'));
         $max = self::max_state($id);
-        foreach (['started_step_ids' => 1, 'notes_step_ids' => 1, 'cheatsheet_step_ids' => 2, 'done_step_ids' => $max, 'reset_step_ids' => 0] as $key => $state) {
+        foreach (['started_step_ids' => 1, 'notes_step_ids' => 1, 'cheatsheet_step_ids' => 2, 'watched_step_ids' => 2, 'done_step_ids' => $max, 'reset_step_ids' => 0] as $key => $state) {
             foreach ((array) ($input[$key] ?? []) as $step_id) {
                 if (in_array((int) $step_id, $own, true)) {
                     self::set_state((int) $step_id, $state, $day);
