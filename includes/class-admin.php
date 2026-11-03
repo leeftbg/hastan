@@ -393,7 +393,12 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
             return;
         }
         if ($goal && $goal['kind'] === 'turkish') {
-            self::turkish_page($goal);
+            $drill = !empty($_GET['drill']) ? Hastan_Drills::get((int) $_GET['drill']) : null;
+            if ($drill && (int) $drill['goal_id'] === (int) $goal['id']) {
+                self::drill_page($goal, $drill);
+            } else {
+                self::turkish_page($goal);
+            }
             return;
         }
         if ($goal) {
@@ -738,48 +743,15 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
         echo '</div>';
     }
 
-    /** "3 ноября" and the Turkish weekday, for a diary page. */
-    private static function tr_date(string $day): array
+    /** İznik tiles and the rest of the Turkish look, shared by the diary and its exercises. */
+    private static function turkish_styles(): string
     {
-        $months = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
-        $gun = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
-        $t = strtotime($day . ' 12:00:00');
-        return [(int) date('j', $t) . ' ' . $months[(int) date('n', $t) - 1], $gun[(int) date('w', $t)], date('Y', $t)];
-    }
-
-    /** The Turkish diary: İznik tiles, a word card to flip, a page per day and a small dictionary. */
-    private static function turkish_page(array $goal): void
-    {
-        $id = (int) $goal['id'];
-        $entries = Hastan_Turkish::entries($id);
-        $days = Hastan_Turkish::by_day($entries);
-        $dict = Hastan_Turkish::dictionary($entries);
-        $c = Hastan_Turkish::counts($entries);
-        $now = Hastan_Settings::now();
-        $today = $now->format('Y-m-d');
-
-        // Weeks from the first entry (or this week): a tile for every week, lit when something was written.
-        $monday = fn (string $d) => date('Y-m-d', strtotime($d . ' 12:00:00 -' . ((int) date('N', strtotime($d . ' 12:00:00')) - 1) . ' days'));
-        $start = $monday($entries ? (string) min(array_keys($days)) : $today);
-        $lit = [];
-        foreach (array_keys($days) as $d) {
-            $lit[$monday($d)] = ($lit[$monday($d)] ?? 0) + count($days[$d]);
-        }
-        $this_week = $monday($today);
-        $weeks = [];
-        for ($w = $start, $i = 0; $i < 26 || $w <= $this_week; $i++, $w = date('Y-m-d', strtotime($w . ' 12:00:00 +7 days'))) {
-            $weeks[] = $w;
-        }
-
-        echo '<div class="wrap ht"><a class="hg-back" href="' . esc_url(self::goal_url()) . '">← Все цели</a>';
-        self::notice();
-        echo self::goal_styles();
         $star = "<svg xmlns='http://www.w3.org/2000/svg' width='72' height='72' viewBox='0 0 72 72'><g fill='none' stroke='%2364c7d6' stroke-opacity='.28' stroke-width='1.4'>"
             . "<path d='M36 14l6.4 15.6L58 36l-15.6 6.4L36 58l-6.4-15.6L14 36l15.6-6.4z'/><rect x='24' y='24' width='24' height='24' transform='rotate(45 36 36)'/><rect x='24' y='24' width='24' height='24'/>"
             . "<circle cx='36' cy='36' r='4'/><path d='M0 0l10 10M72 0L62 10M0 72l10-10M72 72L62 62'/><circle cx='0' cy='0' r='8'/><circle cx='72' cy='0' r='8'/><circle cx='0' cy='72' r='8'/><circle cx='72' cy='72' r='8'/></g></svg>";
         $band = "<svg xmlns='http://www.w3.org/2000/svg' width='28' height='14' viewBox='0 0 28 14'><path d='M0 7L7 0l7 7-7 7z' fill='%23c8402c'/><path d='M14 7l7-7 7 7-7 7z' fill='%232a9d8f'/><circle cx='14' cy='7' r='1.6' fill='%23fbf6ec'/></svg>";
         $tile = "<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'><path d='M12 3l2.6 6.4L21 12l-6.4 2.6L12 21l-2.6-6.4L3 12l6.4-2.6z' fill='%23fbf6ec' fill-opacity='.85'/><circle cx='12' cy='12' r='2.2' fill='%23c8402c'/></svg>";
-        echo '<style>
+        return '<style>
 .ht{--cobalt:#1e4c9a;--navy:#122a5c;--turq:#2a9d8f;--sky:#64c7d6;--coral:#c8402c;--gold:#c9a14a;--cream:#fbf6ec;--paper:#fffdf8;--ink:#1f2a37;--muted:#7a7466;--line:#eadfca;max-width:1180px}
 .ht-hero{position:relative;overflow:hidden;border-radius:18px;margin:8px 0 18px;color:#fff;background:url("data:image/svg+xml,' . $star . '"),radial-gradient(ellipse at 20% 0%,#2a5fb8,var(--cobalt) 45%,var(--navy));box-shadow:0 10px 30px rgba(18,42,92,.25)}
 .ht-hero:after{content:"";position:absolute;left:0;right:0;bottom:0;height:14px;background:url("data:image/svg+xml,' . $band . '") repeat-x;opacity:.95}
@@ -848,9 +820,216 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
 .ht-list{max-height:560px;overflow:auto;margin:0 -6px;padding:0 6px}
 .ht-l{font-family:Georgia,serif;color:var(--coral);font-size:15px;margin:10px 0 2px;border-bottom:1px solid var(--line);scroll-margin-top:10px}
 .ht-w{display:flex;gap:8px;font-size:13.5px;padding:4px 0}.ht-w .tr{color:var(--cobalt);font-weight:600;font-family:Georgia,serif}.ht-w .ru{color:var(--muted)}
+.ht-dh form{margin:0}.ht-mk{border:1px solid var(--line);background:#fff;border-radius:14px;padding:2px 10px;font-size:12px;color:var(--coral);cursor:pointer;font-weight:600}.ht-mk:hover{border-color:var(--coral)}
+.ht-gorev{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-bottom:18px;scroll-margin-top:50px}
+.ht-g{display:block;background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:14px 16px;text-decoration:none;color:var(--ink);transition:box-shadow .15s,transform .15s}.ht-g:hover{box-shadow:0 6px 18px rgba(18,42,92,.12);transform:translateY(-1px);color:var(--ink)}
+.ht-g b{font-family:Georgia,serif;font-size:16px;color:var(--navy);display:block;margin-bottom:2px}.ht-g small{color:var(--muted);font-size:12px}
+.ht-g .bar{height:7px;border-radius:7px;background:#efe6d3;margin:10px 0 4px;overflow:hidden}.ht-g .bar i{display:block;height:100%;background:linear-gradient(90deg,var(--turq),var(--cobalt))}
+.ht-g.pending small{color:var(--turq)}.ht-g.failed small{color:#b32d2e}
+.ht-wait{text-align:center;padding:34px}.ht-wait .ht-tiles{justify-content:center;margin-bottom:14px}.ht-wait .ht-tiles i{animation:htp 1.4s infinite ease-in-out}
+.ht-wait .ht-tiles i:nth-child(2){animation-delay:.15s}.ht-wait .ht-tiles i:nth-child(3){animation-delay:.3s}.ht-wait .ht-tiles i:nth-child(4){animation-delay:.45s}.ht-wait .ht-tiles i:nth-child(5){animation-delay:.6s}.ht-wait .ht-tiles i:nth-child(6){animation-delay:.75s}.ht-wait .ht-tiles i:nth-child(7){animation-delay:.9s}
+@keyframes htp{0%,100%{opacity:.25;transform:scale(.85)}50%{opacity:1;transform:scale(1)}}
+.ht-new,.ht-done{margin-bottom:16px}.ht-new summary,.ht-done summary{cursor:pointer;list-style:none;display:flex;align-items:baseline;gap:12px}.ht-new summary::-webkit-details-marker,.ht-done summary::-webkit-details-marker{display:none}
+.ht-new summary h2,.ht-done summary h2{margin:0}.ht-new summary .ru,.ht-done summary .ru{color:var(--muted);font-size:13px}
+.ht-chips{display:flex;flex-wrap:wrap;gap:6px;margin:14px 0}.ht-chips span{background:#fff;border:1px solid var(--line);border-radius:16px;padding:4px 11px;font-size:13px;color:#4b5563}.ht-chips span b{color:var(--cobalt);font-family:Georgia,serif}.ht-chips span.in{opacity:.55}
+.ht-done .ht-w{align-items:center;border-top:1px dashed var(--line);padding:6px 0}.ht-done .ht-w:first-of-type{margin-top:10px}
+.ht-score{background:#fff4f1;border:1px solid #f0c7bd;color:#8c2a1b;border-radius:12px;padding:12px 16px;margin-bottom:16px;font-size:14px}.ht-score.all{background:#eef8f6;border-color:#a9dcd4;color:#1d6b61}.ht-score b{font-size:17px}
+.ht-tasks{padding:6px 18px;margin-bottom:18px}
+.ht-t{display:flex;align-items:flex-start;gap:12px;padding:12px 0;border-top:1px dashed var(--line);scroll-margin-top:60px}.ht-t:first-child{border-top:0}
+.ht-t .no{flex:none;width:24px;text-align:right;color:#c9bfa9;font-family:Georgia,serif;font-size:14px;padding-top:8px}
+.ht-t .body{flex:1;min-width:0;display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px}
+.ht-t .q{font-size:15px;color:var(--ink);flex:1 1 240px}.ht-t .q[lang=tr]{font-family:Georgia,serif;font-size:16px;color:var(--cobalt)}
+.ht-t .h{flex-basis:100%;color:var(--muted);font-size:12.5px}
+.ht-t input[type=text]{box-sizing:border-box;flex:1 1 260px;border:1px solid var(--line);border-radius:10px;padding:7px 11px;font-size:15px;font-family:Georgia,serif;background:#fff}
+.ht-t input.fill{flex:none;width:92px;margin:0 2px;padding:3px 8px;text-align:center;border-style:dashed;border-color:var(--turq)}
+.ht-t input:focus{border-color:var(--turq);box-shadow:0 0 0 2px rgba(42,157,143,.18);outline:0}
+.ht-t.r1 input{border-color:#8fd0c5;background:#f3fbf9}.ht-t.r2 input{border-color:#eab2a5;background:#fff8f6}
+.ht-t .fix,.ht-t .good{flex-basis:100%;font-size:14px;display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px}
+.ht-t .fix .you{color:#6b7280;font-family:Georgia,serif}.ht-t .fix del{color:#b32d2e;text-decoration:line-through;text-decoration-thickness:2px;background:#fde8e3;border-radius:2px}
+.ht-t .fix .ok{font-family:Georgia,serif;font-size:16px;color:var(--ink);font-weight:600}.ht-t .fix ins{text-decoration:none;color:var(--coral);background:linear-gradient(transparent 55%,rgba(200,64,44,.2) 0);font-weight:700}
+.ht-t .fix .arr{color:#c9bfa9}.ht-t .acc{border:1px solid var(--line);background:#fff;border-radius:12px;padding:1px 9px;font-size:11.5px;color:var(--muted);cursor:pointer}.ht-t .acc:hover{color:var(--turq);border-color:var(--turq)}
+.ht-t .good{color:#1d6b61;font-family:Georgia,serif}
+.ht-t .dots{flex:none;display:flex;gap:3px;padding-top:12px}.ht-t .dots b{width:7px;height:7px;border-radius:50%;background:#e8dfcc}.ht-t .dots b.on{background:var(--turq)}
+.ht-t .tools{flex:none;display:flex;gap:2px;padding-top:4px;opacity:.35;transition:opacity .15s}.ht-t:hover .tools{opacity:1}
+.ht-t .tools button{border:0;background:none;cursor:pointer;font-size:15px;color:var(--turq);padding:4px}.ht-t .tools .x{color:#b32d2e;font-size:17px}
+.ht-bar{position:sticky;bottom:0;z-index:5;display:flex;align-items:center;gap:14px;flex-wrap:wrap;background:rgba(255,253,248,.96);backdrop-filter:blur(4px);border:1px solid var(--line);border-radius:16px;padding:10px 14px;margin:6px 0 10px;box-shadow:0 -4px 18px rgba(18,42,92,.08)}
+.ht-bar #ht-filled{font-size:13px;color:var(--navy);font-weight:600}.ht-bar .ht-btn{margin-left:auto}
 @media (max-width:900px){.ht-row,.ht-main{grid-template-columns:1fr}.ht-dict{position:static}.ht-tulip{display:none}}
-@media (max-width:600px){.ht-in{padding:22px 22px 34px}.ht-hero h1{font-size:28px}.ht-hero h1 i{display:block;margin:4px 0 0}}
+@media (max-width:600px){.ht-nazar{width:96px;height:96px}.ht-bar .ht-hint{display:none}.ht-bar{gap:8px;padding:8px 10px}.ht-bar .ht-keys button{width:28px;height:28px}.ht-in{padding:22px 22px 34px}.ht-hero h1{font-size:28px}.ht-hero h1 i{display:block;margin:4px 0 0}}
 </style>';
+    }
+
+    private static function drill_url(int $goal_id, int $drill_id, string $extra = ''): string
+    {
+        return admin_url('admin.php?page=hastan-goals&goal=' . $goal_id . '&drill=' . $drill_id . $extra);
+    }
+
+    /** Characters of a diff, the ones that differ wrapped in a tag. */
+    private static function diff_html(array $chars, string $tag): string
+    {
+        $out = '';
+        foreach ($chars as [$c, $same]) {
+            $out .= $same ? esc_html($c) : '<' . $tag . '>' . esc_html($c) . '</' . $tag . '>';
+        }
+        return preg_replace('#</' . $tag . '><' . $tag . '>#', '', $out);
+    }
+
+    /** Exercises for one diary page: write, check, see the mistakes letter by letter. */
+    private static function drill_page(array $goal, array $drill): void
+    {
+        $id = (int) $goal['id'];
+        $did = (int) $drill['id'];
+        $items = Hastan_Drills::items($did);
+        $active = array_values(array_filter($items, fn ($i) => !(int) $i['learned']));
+        $learned = array_values(array_filter($items, fn ($i) => (int) $i['learned']));
+        $checked = !empty($_GET['checked']);
+        [$date] = self::tr_date($drill['day']);
+        echo '<div class="wrap ht"><a class="hg-back" href="' . esc_url(self::goal_url($id, 'gorev')) . '">← ' . esc_html($goal['title']) . '</a>';
+        self::notice();
+        echo self::goal_styles() . self::turkish_styles();
+
+        $total = count($items);
+        $pct = $total ? count($learned) / $total : 0;
+        echo '<div class="ht-hero"><div class="ht-in"><div><div class="ht-eyebrow">Görev · задание</div><h1>' . esc_html($drill['title']) . '</h1>'
+            . '<div class="sub">По странице дневника за ' . esc_html($date) . '. Фраза выучена после ' . Hastan_Drills::LEARNED . ' верных ответов в разные дни, ошибка начинает её заново.</div>';
+        if ($total) {
+            echo '<div class="ht-stats"><span><b>' . count($learned) . '</b>выучено<em>öğrenildi</em></span><span><b>' . count($active) . '</b>осталось<em>kalan</em></span><span><b>' . $total . '</b>всего</span></div>';
+        }
+        echo '</div><div class="ht-nazar" title="Выучено"><div class="n">' . count($learned) . '<small>/ ' . $total . '</small></div></div></div></div>';
+
+        if ($drill['status'] === 'pending') {
+            echo '<div class="ht-card ht-wait"><div class="ht-tiles">' . str_repeat('<i class="on"></i>', 7) . '</div><h2>Hazırlanıyor…</h2><div class="ru">Claude составляет 50 фраз по этой странице. Обычно это минута-две, страница обновится сама.</div></div>'
+                . '<script>setTimeout(function(){location.reload();},8000);</script></div>';
+            return;
+        }
+        if ($drill['status'] === 'failed') {
+            echo '<div class="ht-card"><h2>Не получилось</h2><div class="ru">' . esc_html($drill['error']) . '</div>'
+                . self::goal_form('drill_retry', ['goal' => $id, 'drill' => $did], '<button class="ht-btn">Попробовать ещё раз</button>') . '</div></div>';
+            return;
+        }
+
+        $words = (array) json_decode((string) $drill['words'], true);
+        if ($words) {
+            $have = array_flip(array_map(fn ($e) => Hastan_Turkish::lower(Hastan_Turkish::plain($e['tr'])), Hastan_Turkish::dictionary(Hastan_Turkish::entries($id))));
+            $fresh = array_filter($words, fn ($w) => !isset($have[Hastan_Turkish::lower(trim((string) $w['tr']))]));
+            echo '<details class="ht-card ht-new"' . ($fresh ? ' open' : '') . '><summary><h2>Yeni kelimeler</h2><span class="ru">Новые слова в этом задании · ' . count($words) . '</span></summary><div class="ht-chips">';
+            foreach ($words as $w) {
+                $in = isset($have[Hastan_Turkish::lower(trim((string) $w['tr']))]);
+                echo '<span class="' . ($in ? 'in' : '') . '"><b lang="tr">' . esc_html($w['tr']) . '</b> ' . esc_html($w['ru']) . '</span>';
+            }
+            echo '</div>' . ($fresh ? self::goal_form('drill_words', ['goal' => $id, 'drill' => $did], '<button class="button">Добавить в словарик (' . count($fresh) . ')</button>') : '<p class="ht-hint">Все слова уже в словарике.</p>') . '</details>';
+        }
+
+        if ($checked) {
+            $r = count(array_filter($items, fn ($i) => (int) $i['last_result'] === 1));
+            $w = count(array_filter($items, fn ($i) => (int) $i['last_result'] === 2));
+            echo '<div class="ht-score' . ($w ? '' : ' all') . '"><b>' . $r . '</b> верно · <b>' . $w . '</b> ' . self::plural($w, ['ошибка', 'ошибки', 'ошибок']) . ($w ? '. Ошибки ниже, нужные буквы выделены.' : '. Harika!') . '</div>';
+        }
+
+        $keys = '<div class="ht-keys ht-dkeys">' . implode('', array_map(fn ($k) => '<button type="button" data-k="' . $k . '">' . $k . '</button>', ['ç', 'ğ', 'ı', 'İ', 'ö', 'ş', 'ü'])) . '</div>';
+        $form = '';
+        $heads = ['ru_tr' => ['Rusçadan Türkçeye', 'переведите на турецкий'], 'tr_ru' => ['Türkçeden Rusçaya', 'переведите на русский'], 'fill' => ['Boşluğu doldur', 'допишите окончание']];
+        $n = 0;
+        foreach ($heads as $kind => [$tr, $ru]) {
+            $list = array_filter($active, fn ($i) => $i['kind'] === $kind);
+            if (!$list) {
+                continue;
+            }
+            $form .= '<div class="ht-sec">' . $tr . ' <small>' . $ru . ' · ' . count($list) . '</small></div><div class="ht-card ht-tasks">';
+            foreach ($list as $it) {
+                $n++;
+                $iid = (int) $it['id'];
+                $res = $checked ? (int) $it['last_result'] : 0;
+                $dots = '';
+                for ($k = 1; $k <= Hastan_Drills::LEARNED; $k++) {
+                    $dots .= '<b' . ((int) $it['streak'] >= $k ? ' class="on"' : '') . '></b>';
+                }
+                $input = '<input type="text" name="a[' . $iid . ']" autocomplete="off" spellcheck="false" lang="' . ($kind === 'tr_ru' ? 'ru' : 'tr') . '"' . ($kind === 'fill' ? ' class="fill"' : '') . '>';
+                if ($kind === 'fill') {
+                    $parts = explode('___', $it['prompt'], 2);
+                    $q = '<span class="q" lang="tr">' . esc_html(rtrim($parts[0])) . $input . esc_html($parts[1] ?? '') . '</span>' . ($it['hint'] !== '' ? '<span class="h">' . esc_html($it['hint']) . '</span>' : '');
+                } else {
+                    $q = '<span class="q"' . ($kind === 'tr_ru' ? ' lang="tr"' : '') . '>' . esc_html($it['prompt']) . '</span>' . $input;
+                }
+                $form .= '<div class="ht-t r' . $res . '" id="t' . $iid . '"><span class="no">' . $n . '</span><div class="body">' . $q;
+                if ($res === 2) {
+                    [$ga, $gb] = Hastan_Drills::diff($it['last_answer'], $it['answer'], $kind === 'tr_ru');
+                    $form .= '<div class="fix"><span class="you">' . self::diff_html($ga, 'del') . '</span><span class="arr">→</span><span class="ok"' . ($kind === 'tr_ru' ? '' : ' lang="tr"') . '>' . self::diff_html($gb, 'ins') . '</span>'
+                        . '<button type="submit" form="acc' . $iid . '" class="acc" title="Мой вариант тоже правильный">засчитать мой</button></div>';
+                } elseif ($res === 1) {
+                    $form .= '<div class="good">✓ ' . esc_html($it['last_answer']) . '</div>';
+                }
+                $form .= '</div><span class="dots" title="Верных ответов подряд в разные дни: ' . (int) $it['streak'] . ' из ' . Hastan_Drills::LEARNED . '">' . $dots . '</span>'
+                    . '<span class="tools"><button type="submit" form="lrn' . $iid . '" title="Уже знаю — убрать в выученные">✓</button><button type="submit" form="del' . $iid . '" class="x" title="Удалить фразу" onclick="return confirm(\'Удалить фразу?\')">×</button></span></div>';
+            }
+            $form .= '</div>';
+        }
+        if ($active) {
+            echo self::goal_form('drill_check', ['goal' => $id, 'drill' => $did], '<div class="ht-bar">' . $keys . '<span id="ht-filled">заполнено 0 из ' . count($active) . '</span><span class="ht-hint">Пустые поля не проверяются.</span><button class="ht-btn">Kontrol et · Проверить</button></div>', $form, 'class="ht-drill"');
+        } else {
+            echo '<div class="ht-card ht-empty"><div class="w">Tebrikler!</div>Все фразы этого задания выучены.</div>';
+        }
+        // The small per-row forms live outside the big one: forms cannot nest.
+        foreach ($active as $it) {
+            $iid = (int) $it['id'];
+            echo self::goal_form('drill_accept', ['goal' => $id, 'drill' => $did, 'checked' => (int) $checked, 'item' => $iid], '', '', 'id="acc' . $iid . '" hidden')
+                . self::goal_form('drill_learned', ['goal' => $id, 'drill' => $did, 'checked' => (int) $checked, 'item' => $iid, 'on' => 1], '', '', 'id="lrn' . $iid . '" hidden')
+                . self::goal_form('drill_item_delete', ['goal' => $id, 'drill' => $did, 'checked' => (int) $checked, 'item' => $iid], '', '', 'id="del' . $iid . '" hidden');
+        }
+
+        if ($learned) {
+            echo '<details class="ht-card ht-done"><summary><h2>Öğrenildi</h2><span class="ru">Выученные · ' . count($learned) . '</span></summary>';
+            foreach ($learned as $it) {
+                echo '<div class="ht-w"><span class="tr">' . esc_html($it['kind'] === 'tr_ru' ? $it['prompt'] : ($it['kind'] === 'fill' ? str_replace('___', $it['answer'], $it['prompt']) : $it['answer'])) . '</span><span class="ru">' . esc_html($it['kind'] === 'tr_ru' ? $it['answer'] : ($it['kind'] === 'fill' ? $it['hint'] : $it['prompt'])) . '</span>'
+                    . self::goal_form('drill_learned', ['goal' => $id, 'drill' => $did, 'item' => (int) $it['id'], 'on' => 0], '<button class="button button-small" title="Снова тренировать">вернуть</button>', '', 'style="margin-left:auto"') . '</div>';
+            }
+            echo '</details>';
+        }
+        echo '<p style="margin-top:24px">' . self::goal_form('drill_delete', ['goal' => $id, 'drill' => $did], '<button class="button button-link-delete" onclick="return confirm(\'Удалить всё задание?\')">Удалить задание целиком</button>') . '</p>';
+        echo '<script>(function(){var t=null;document.addEventListener("focusin",function(e){if(e.target.matches(".ht-drill input[type=text]"))t=e.target;});'
+            . 'document.querySelectorAll(".ht-dkeys button").forEach(function(b){b.addEventListener("mousedown",function(e){e.preventDefault();});b.addEventListener("click",function(){if(!t)return;var s=t.selectionStart,e=t.selectionEnd,k=b.dataset.k;t.value=t.value.slice(0,s)+k+t.value.slice(e);t.selectionStart=t.selectionEnd=s+k.length;t.dispatchEvent(new Event("input",{bubbles:true}));});});'
+            . 'var f=document.getElementById("ht-filled"),all=document.querySelectorAll(".ht-drill input[type=text]");function cnt(){var n=0;all.forEach(function(i){if(i.value.trim())n++;});if(f)f.textContent="заполнено "+n+" из "+all.length;}document.addEventListener("input",cnt);'
+            . 'all.forEach(function(i,k){i.addEventListener("keydown",function(e){if(e.key==="Enter"){e.preventDefault();if(all[k+1])all[k+1].focus();}});});})();</script>';
+        echo '</div>';
+    }
+
+    /** "3 ноября" and the Turkish weekday, for a diary page. */
+    private static function tr_date(string $day): array
+    {
+        $months = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+        $gun = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
+        $t = strtotime($day . ' 12:00:00');
+        return [(int) date('j', $t) . ' ' . $months[(int) date('n', $t) - 1], $gun[(int) date('w', $t)], date('Y', $t)];
+    }
+
+    /** The Turkish diary: İznik tiles, a word card to flip, a page per day and a small dictionary. */
+    private static function turkish_page(array $goal): void
+    {
+        $id = (int) $goal['id'];
+        $entries = Hastan_Turkish::entries($id);
+        $days = Hastan_Turkish::by_day($entries);
+        $dict = Hastan_Turkish::dictionary($entries);
+        $c = Hastan_Turkish::counts($entries);
+        $now = Hastan_Settings::now();
+        $today = $now->format('Y-m-d');
+
+        // Weeks from the first entry (or this week): a tile for every week, lit when something was written.
+        $monday = fn (string $d) => date('Y-m-d', strtotime($d . ' 12:00:00 -' . ((int) date('N', strtotime($d . ' 12:00:00')) - 1) . ' days'));
+        $start = $monday($entries ? (string) min(array_keys($days)) : $today);
+        $lit = [];
+        foreach (array_keys($days) as $d) {
+            $lit[$monday($d)] = ($lit[$monday($d)] ?? 0) + count($days[$d]);
+        }
+        $this_week = $monday($today);
+        $weeks = [];
+        for ($w = $start, $i = 0; $i < 26 || $w <= $this_week; $i++, $w = date('Y-m-d', strtotime($w . ' 12:00:00 +7 days'))) {
+            $weeks[] = $w;
+        }
+
+        echo '<div class="wrap ht"><a class="hg-back" href="' . esc_url(self::goal_url()) . '">← Все цели</a>';
+        self::notice();
+        echo self::goal_styles();
+        echo self::turkish_styles();
 
         echo '<div class="ht-hero"><svg class="ht-tulip" viewBox="0 0 60 100" aria-hidden="true"><path d="M30 98C30 76 31 58 30 40" stroke="#2a9d8f" stroke-width="3" fill="none"/>'
             . '<path d="M30 84C16 76 9 60 11 46c10 9 17 21 19 38z" fill="#2a9d8f"/><path d="M30 74c13-8 20-22 18-34-9 8-16 19-18 34z" fill="#3fb6a8"/>'
@@ -887,6 +1066,20 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
         }
         echo '</div></div>';
 
+        // Exercises made from diary pages.
+        $drills = Hastan_Drills::all($id);
+        if ($drills) {
+            echo '<div class="ht-sec" id="gorev">Görevler <small>задания</small></div><div class="ht-gorev">';
+            foreach ($drills as $d) {
+                [$l, $t] = Hastan_Drills::progress((int) $d['id']);
+                [$dd] = self::tr_date($d['day']);
+                $state = ['pending' => 'готовится…', 'failed' => 'не получилось — откройте, чтобы повторить'][$d['status']] ?? 'выучено ' . $l . ' из ' . $t;
+                echo '<a class="ht-g ' . esc_attr($d['status']) . '" href="' . esc_url(self::drill_url($id, (int) $d['id'])) . '"><b>' . esc_html($d['title']) . '</b><small>страница ' . esc_html($dd) . '</small>'
+                    . '<div class="bar"><i style="width:' . ($t ? round($l / $t * 100, 1) : 0) . '%"></i></div><small>' . esc_html($state) . '</small></a>';
+            }
+            echo '</div>';
+        }
+
         // Diary pages and the dictionary.
         echo '<div class="ht-main"><div><div class="ht-sec">Günlük <small>дневник</small></div>';
         if (!$days) {
@@ -896,7 +1089,8 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
             [$date, $gun, $year] = self::tr_date($day);
             $words = count(array_filter($list, fn ($e) => $e['tr'] !== ''));
             echo '<section class="ht-day" id="d' . esc_attr(str_replace('-', '', $day)) . '"><div class="ht-dh"><b>' . esc_html($date) . ($year !== $now->format('Y') ? ' ' . esc_html($year) : '') . '</b><span>' . esc_html($gun) . '</span>'
-                . '<em>' . ($words ? $words . ' ' . self::plural($words, ['запись', 'записи', 'записей']) . ' по-турецки' : 'заметки') . '</em></div>';
+                . '<em>' . ($words ? $words . ' ' . self::plural($words, ['запись', 'записи', 'записей']) . ' по-турецки' : 'заметки') . '</em>'
+                . self::goal_form('tr_drill', ['goal' => $id, 'day' => $day], '<button class="ht-mk" title="50 фраз на эту тему: 35 на турецкий, 10 на русский, 5 окончаний">＋ Задание</button>', '', '') . '</div>';
             foreach ($list as $e) {
                 $anchor = 'd' . str_replace('-', '', $day);
                 $del = '<span class="acts"><button type="button" class="ed" title="Изменить">✎</button>'
@@ -1018,6 +1212,69 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
                     Hastan_Turkish::update((int) ($_POST['note'] ?? 0), $text('line'));
                 }
                 break;
+            case 'tr_drill':
+                $goal = Hastan_Goals::get($back);
+                $day = $text('day');
+                if ($goal && $goal['kind'] === 'turkish' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $day)) {
+                    wp_safe_redirect(self::drill_url($back, Hastan_Drills::request($back, $day)));
+                    exit;
+                }
+                break;
+            case 'drill_retry':
+            case 'drill_check':
+            case 'drill_accept':
+            case 'drill_learned':
+            case 'drill_item_delete':
+            case 'drill_words':
+            case 'drill_delete':
+                $drill = Hastan_Drills::get((int) ($_POST['drill'] ?? 0));
+                if (!$drill || (int) $drill['goal_id'] !== $back) {
+                    break;
+                }
+                $did = (int) $drill['id'];
+                $item = Hastan_Drills::item((int) ($_POST['item'] ?? 0));
+                $item = $item && (int) $item['drill_id'] === $did ? $item : null;
+                $today = Hastan_Settings::now()->format('Y-m-d');
+                $extra = !empty($_POST['checked']) ? '&checked=1' : '';
+                switch (sanitize_key($_POST['op'])) {
+                    case 'drill_retry':
+                        Hastan_Drills::delete($did);
+                        $did = Hastan_Drills::request($back, $drill['day']);
+                        break;
+                    case 'drill_check':
+                        $answers = [];
+                        foreach ((array) ($_POST['a'] ?? []) as $k => $v) {
+                            $answers[(int) $k] = sanitize_text_field(wp_unslash((string) $v));
+                        }
+                        Hastan_Drills::check($did, $answers, $today);
+                        $extra = '&checked=1';
+                        break;
+                    case 'drill_accept':
+                        if ($item) {
+                            Hastan_Drills::accept((int) $item['id'], $today);
+                            $extra = '&checked=1#t' . (int) $item['id'];
+                        }
+                        break;
+                    case 'drill_learned':
+                        if ($item) {
+                            Hastan_Drills::set_learned((int) $item['id'], !empty($_POST['on']));
+                        }
+                        break;
+                    case 'drill_item_delete':
+                        if ($item) {
+                            Hastan_Drills::delete_item((int) $item['id']);
+                        }
+                        break;
+                    case 'drill_words':
+                        Hastan_Drills::add_words($drill, $today);
+                        break;
+                    case 'drill_delete':
+                        Hastan_Drills::delete($did);
+                        wp_safe_redirect(self::goal_url($back));
+                        exit;
+                }
+                wp_safe_redirect(self::drill_url($back, $did, $extra));
+                exit;
             case 'tr_add':
                 $day = preg_match('/^\d{4}-\d{2}-\d{2}$/', $text('day')) ? $text('day') : Hastan_Settings::now()->format('Y-m-d');
                 $goal = Hastan_Goals::get($back);
