@@ -100,6 +100,10 @@ class Hastan_Goals
             Hastan_Turkish::fix_sides();
             update_option('hastan_turkish_sides', 1, false);
         }
+        if (!get_option('hastan_turkish_notes')) {
+            Hastan_Turkish::fix_notes();
+            update_option('hastan_turkish_notes', 1, false);
+        }
     }
 
     /** The psychology lectures: one step per video; details hold the duration and the link. */
