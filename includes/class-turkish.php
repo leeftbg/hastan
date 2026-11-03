@@ -79,6 +79,26 @@ class Hastan_Turkish
         return trim(str_replace('*', '', $s));
     }
 
+    public static function russian(string $s): bool
+    {
+        return (bool) preg_match('/\p{Cyrillic}/u', $s);
+    }
+
+    /** Lines with Russian on both sides of the dash, saved as words before 0.19.1, become notes. */
+    public static function fix_notes(): void
+    {
+        global $wpdb;
+        $goal = self::goal();
+        if (!$goal) {
+            return;
+        }
+        foreach (self::entries((int) $goal['id']) as $e) {
+            if ($e['tr'] !== '' && self::russian($e['tr'])) {
+                $wpdb->update(Hastan_Goals::notes_table(), ['tr' => '', 'body' => self::as_line($e), 'kind' => 'note'], ['id' => (int) $e['id']]);
+            }
+        }
+    }
+
     /** Turkish goes first, whichever side it was typed on: "Книга на столе — Kitap masada" is swapped. */
     private static function sides(string $tr, string $ru): array
     {
@@ -104,7 +124,10 @@ class Hastan_Turkish
         $parts = preg_split('/\s+[—–-]\s+|\s*[—–=]\s*/u', $line, 2);
         if (count($parts) === 2 && trim($parts[0]) !== '') {
             [$tr, $ru] = self::sides(trim($parts[0]), trim($parts[1]));
-            return ['tr' => $tr, 'ru' => $ru, 'kind' => self::kind_of($tr, '')];
+            if (!self::russian($tr)) {
+                return ['tr' => $tr, 'ru' => $ru, 'kind' => self::kind_of($tr, '')];
+            }
+            // Russian on both sides of the dash: a thought, not a word to learn.
         }
         return ['tr' => '', 'ru' => $line, 'kind' => 'note'];
     }
@@ -146,6 +169,9 @@ class Hastan_Turkish
         [$tr, $ru] = self::sides(mb_substr(trim($tr), 0, 255), trim($ru));
         if ($tr === '' && $ru === '') {
             return;
+        }
+        if (self::russian($tr)) {
+            [$tr, $ru, $kind] = ['', $tr . ($ru !== '' ? ' — ' . $ru : ''), 'note'];
         }
         $kind = self::kind_of($tr, $kind);
         $wpdb->insert(Hastan_Goals::notes_table(), [
