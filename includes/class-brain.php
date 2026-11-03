@@ -140,6 +140,49 @@ class Hastan_Brain
         }
     }
 
+    /**
+     * One request without tools or chat history whose answer is JSON in the
+     * given schema. Throws on any failure; the caller shows the reason.
+     */
+    public static function json(string $system, string $prompt, array $schema, string $effort = 'high'): array
+    {
+        if (!Hastan_Settings::get('anthropic_key')) {
+            throw new RuntimeException('Не задан ключ Claude API (Hastan → Настройки).');
+        }
+        try {
+            $response = self::client()->beta->messages->create(
+                maxTokens: 32000,
+                messages: [['role' => 'user', 'content' => $prompt]],
+                model: (string) Hastan_Settings::get('model'),
+                fallbacks: 'default',
+                outputConfig: ['effort' => $effort, 'format' => ['type' => 'json_schema', 'schema' => $schema]],
+                system: $system,
+                betas: ['server-side-fallback-2026-07-01'],
+            );
+        } catch (APIStatusException $e) {
+            error_log('Hastan Claude: ' . $e->getMessage());
+            throw new RuntimeException('Claude API вернул ошибку ' . $e->status . '.');
+        } catch (APIConnectionException $e) {
+            error_log('Hastan Claude: ' . $e->getMessage());
+            throw new RuntimeException('Не получилось связаться с Claude API.');
+        }
+        if ($response->stopReason === 'refusal') {
+            throw new RuntimeException('Claude отказался составить задание.');
+        }
+        if ($response->stopReason === 'max_tokens') {
+            throw new RuntimeException('Ответ получился слишком длинным и оборвался.');
+        }
+        foreach ($response->content as $block) {
+            if ($block->type === 'text') {
+                $data = json_decode($block->text, true);
+                if (is_array($data)) {
+                    return $data;
+                }
+            }
+        }
+        throw new RuntimeException('Claude вернул ответ не в том виде.');
+    }
+
     /** Adds a text message, merging consecutive messages of the same role. */
     private static function append(array &$messages, string $role, string $text): void
     {

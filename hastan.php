@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Hastan — личный ИИ-помощник
  * Description: Задачи, чек-листы и напоминания через Telegram. Разбирает сообщения с помощью Claude, утром присылает план, вечером проверяет, что сделано.
- * Version: 0.18.2
+ * Version: 0.19.0
  * Requires at least: 6.2
  * Requires PHP: 8.1
  * Author: xf
@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('HASTAN_VERSION', '0.18.2');
+define('HASTAN_VERSION', '0.19.0');
 define('HASTAN_DIR', plugin_dir_path(__FILE__));
 define('HASTAN_FILE', __FILE__);
 
@@ -26,6 +26,7 @@ require_once HASTAN_DIR . 'includes/class-food.php';
 require_once HASTAN_DIR . 'includes/class-steps.php';
 require_once HASTAN_DIR . 'includes/class-goals.php';
 require_once HASTAN_DIR . 'includes/class-turkish.php';
+require_once HASTAN_DIR . 'includes/class-drills.php';
 require_once HASTAN_DIR . 'includes/class-telegram.php';
 require_once HASTAN_DIR . 'includes/class-brain.php';
 require_once HASTAN_DIR . 'includes/class-scheduler.php';
@@ -60,4 +61,5 @@ Hastan_Telegram::init();
 Hastan_Scheduler::init();
 Hastan_MCP::init();
 Hastan_Steps::init();
+Hastan_Drills::init();
 Hastan_Admin::init();
