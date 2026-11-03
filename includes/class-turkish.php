@@ -63,21 +63,91 @@ class Hastan_Turkish
     /** First letter for the dictionary headings, in Turkish capitals. */
     public static function initial(string $s): string
     {
+ $s = self::plain($s);
         $ch = mb_substr(self::lower(ltrim($s, " \t\"'«(¡¿")), 0, 1);
         return $ch === 'i' ? 'İ' : ($ch === 'ı' ? 'I' : mb_strtoupper($ch));
+    }
+
+    /** Highlights are typed as *стол*е: the part between asterisks is shown in colour. */
+    public static function mark(string $s): string
+    {
+        return preg_replace('/\*([^*\n]+)\*/u', '<mark class="hl">$1</mark>', esc_html($s));
+    }
+
+    public static function plain(string $s): string
+    {
+        return trim(str_replace('*', '', $s));
+    }
+
+    /** Turkish goes first, whichever side it was typed on: "Книга на столе — Kitap masada" is swapped. */
+    private static function sides(string $tr, string $ru): array
+    {
+        $cyr = fn ($s) => (bool) preg_match('/\p{Cyrillic}/u', $s);
+        return $ru !== '' && $cyr($tr) && !$cyr($ru) ? [$ru, $tr] : [$tr, $ru];
+    }
+
+    private static function kind_of(string $tr, string $kind): string
+    {
+        if (isset(self::KINDS[$kind]) && ($kind === 'note') === ($tr === '')) {
+            return $kind;
+        }
+        return $tr === '' ? 'note' : (preg_match('/\s/u', self::plain($tr)) ? 'phrase' : 'word');
+    }
+
+    /** Splits a typed line into Turkish and translation; a line without a dash is a note. */
+    public static function parse(string $line): ?array
+    {
+        $line = trim(preg_replace('/^\s*(?:[•·]|-(?=\s))\s*/u', '', $line));
+        if ($line === '') {
+            return null;
+        }
+        $parts = preg_split('/\s+[—–-]\s+|\s*[—–=]\s*/u', $line, 2);
+        if (count($parts) === 2 && trim($parts[0]) !== '') {
+            [$tr, $ru] = self::sides(trim($parts[0]), trim($parts[1]));
+            return ['tr' => $tr, 'ru' => $ru, 'kind' => self::kind_of($tr, '')];
+        }
+        return ['tr' => '', 'ru' => $line, 'kind' => 'note'];
+    }
+
+    /** An entry as it is typed, for editing. */
+    public static function as_line(array $e): string
+    {
+        return $e['tr'] === '' ? $e['body'] : $e['tr'] . ($e['body'] !== '' ? ' — ' . $e['body'] : '');
+    }
+
+    public static function update(int $note_id, string $line): void
+    {
+        global $wpdb;
+        $e = self::parse($line);
+        if ($e) {
+            $wpdb->update(Hastan_Goals::notes_table(), ['tr' => mb_substr($e['tr'], 0, 255), 'body' => $e['ru'], 'kind' => $e['kind']], ['id' => $note_id]);
+        }
+    }
+
+    /** Entries written before the swap existed: Russian on the left, Turkish on the right. */
+    public static function fix_sides(): void
+    {
+        global $wpdb;
+        $goal = self::goal();
+        if (!$goal) {
+            return;
+        }
+        foreach (self::entries((int) $goal['id']) as $e) {
+            [$tr, $ru] = self::sides($e['tr'], $e['body']);
+            if ($tr !== $e['tr']) {
+                $wpdb->update(Hastan_Goals::notes_table(), ['tr' => $tr, 'body' => $ru], ['id' => (int) $e['id']]);
+            }
+        }
     }
 
     public static function add(int $goal_id, string $day, string $kind, string $tr, string $ru): void
     {
         global $wpdb;
-        $tr = mb_substr(trim($tr), 0, 255);
-        $ru = trim($ru);
+        [$tr, $ru] = self::sides(mb_substr(trim($tr), 0, 255), trim($ru));
         if ($tr === '' && $ru === '') {
             return;
         }
-        if (!isset(self::KINDS[$kind])) {
-            $kind = $tr === '' ? 'note' : (preg_match('/\s/u', $tr) ? 'phrase' : 'word');
-        }
+        $kind = self::kind_of($tr, $kind);
         $wpdb->insert(Hastan_Goals::notes_table(), [
             'goal_id' => $goal_id,
             'day' => $day,
@@ -96,17 +166,11 @@ class Hastan_Turkish
     {
         $n = 0;
         foreach (preg_split('/\R/u', $text) as $line) {
-            $line = trim(preg_replace('/^\s*(?:[•·*]|-(?=\s))\s*/u', '', $line));
-            if ($line === '') {
-                continue;
+            $e = self::parse($line);
+            if ($e) {
+                self::add($goal_id, $day, $e['kind'], $e['tr'], $e['ru']);
+                $n++;
             }
-            $parts = preg_split('/\s+[—–-]\s+|\s*[—–=]\s*/u', $line, 2);
-            if (count($parts) === 2 && trim($parts[0]) !== '') {
-                self::add($goal_id, $day, '', $parts[0], $parts[1]);
-            } else {
-                self::add($goal_id, $day, 'note', '', $line);
-            }
-            $n++;
         }
         return $n;
     }
@@ -135,12 +199,12 @@ class Hastan_Turkish
             if ($e['tr'] === '') {
                 continue;
             }
-            $k = self::lower($e['tr']);
+            $k = self::lower(self::plain($e['tr']));
             if (!isset($seen[$k])) {
                 $seen[$k] = $e;
             }
         }
-        uasort($seen, fn ($a, $b) => strcmp(self::sort_key($a['tr']), self::sort_key($b['tr'])));
+        uasort($seen, fn ($a, $b) => strcmp(self::sort_key(self::plain($a['tr'])), self::sort_key(self::plain($b['tr']))));
         return array_values($seen);
     }
 
@@ -166,7 +230,7 @@ class Hastan_Turkish
         $c = self::counts($entries);
         $last = array_slice(array_filter($entries, fn ($e) => $e['tr'] !== ''), 0, 5);
         return 'дневник: слов ' . $c['word'] . ', фраз ' . $c['phrase'] . ', заметок ' . $c['note'] . ', последняя запись ' . Hastan_Goals::short_date($entries[0]['day'])
-            . ($last ? '; недавние: ' . implode(', ', array_map(fn ($e) => $e['tr'], $last)) : '');
+            . ($last ? '; недавние: ' . implode(', ', array_map(fn ($e) => self::plain($e['tr']), $last)) : '');
     }
 
     /** Tool: write what was learned into the diary. */
