@@ -68,15 +68,22 @@ class Hastan_Turkish
         return $ch === 'i' ? 'İ' : ($ch === 'ı' ? 'I' : mb_strtoupper($ch));
     }
 
-    /** Highlights are typed as *стол*е: the part between asterisks is shown in colour. */
+    /** Highlight marks: *красный*, ^бирюзовый^, ~золотой~. Matching parts get the same colour. */
+    const MARKS = ['*' => 'hl', '^' => 'hl hl2', '~' => 'hl hl3'];
+
     public static function mark(string $s): string
     {
-        return preg_replace('/\*([^*\n]+)\*/u', '<mark class="hl">$1</mark>', esc_html($s));
+        $s = esc_html($s);
+        foreach (self::MARKS as $m => $class) {
+            $q = preg_quote($m, '/');
+            $s = preg_replace('/' . $q . '([^' . $q . '\n]+)' . $q . '/u', '<mark class="' . $class . '">$1</mark>', $s);
+        }
+        return $s;
     }
 
     public static function plain(string $s): string
     {
-        return trim(str_replace('*', '', $s));
+        return trim(str_replace(array_keys(self::MARKS), '', $s));
     }
 
     public static function russian(string $s): bool
