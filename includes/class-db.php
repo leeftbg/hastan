@@ -9,7 +9,7 @@ if (!defined('ABSPATH')) {
  */
 class Hastan_DB
 {
-    const VERSION = '15';
+    const VERSION = '16';
 
     public static function tasks_table(): string
     {
