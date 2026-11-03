@@ -814,7 +814,9 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
 .ht-e .ef input[type=text]{flex:1;border:1px solid var(--turq);border-radius:10px;padding:6px 10px;font-size:14px;font-family:Georgia,serif}
 .ht-e .ef .ht-btn{padding:6px 14px;font-size:13px}
 .ht-e.note{color:var(--ink);font-size:14px;line-height:1.5}.ht-e.note .star{flex:none;color:var(--coral);font-size:12px}
-.ht-e.note .txt{flex:1 1 0;min-width:0}.ht-e .acts{flex:none}
+.ht-e.note .txt{flex:1 1 0;min-width:0}.ht-e.note .txt p{margin:0}.ht-e.note .txt p+p{margin-top:4px}
+.ht-e.note .txt ul{margin:6px 0 2px;padding:0;list-style:none}.ht-e.note .txt li{position:relative;padding:3px 0 3px 18px}.ht-e.note .txt li:before{content:"";position:absolute;left:3px;top:.75em;width:6px;height:6px;border-radius:1px;background:var(--turq);transform:rotate(45deg)}
+.ht-e .ef{align-items:center;flex-wrap:wrap}.ht-e .ef textarea{box-sizing:border-box;flex:1 1 100%;min-height:110px;border:1px solid var(--turq);border-radius:10px;padding:6px 10px;font-size:14px;font-family:inherit;line-height:1.5;resize:vertical}.ht-e .acts{flex:none}
 .ht-e .x{border:0;background:none;color:#b32d2e;cursor:pointer;font-size:16px}
 .ht-empty{text-align:center;padding:34px 20px;color:var(--muted)}.ht-empty .w{font-family:Georgia,serif;font-size:26px;color:var(--cobalt);margin-bottom:6px}
 .ht-dict{position:sticky;top:44px}
@@ -1048,7 +1050,7 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
         $cards = array_map(fn ($e) => ['tr' => Hastan_Turkish::mark($e['tr']), 'ru' => $e['body'] !== '' ? Hastan_Turkish::mark($e['body']) : '—', 'k' => $e['kind'] === 'phrase' ? 'ifade · фраза' : 'kelime · слово'], $dict);
         echo '<div class="ht-row"><div class="ht-card ht-form"><h2>Bugün ne öğrendim?</h2><div class="ru">Что я сегодня узнала</div>'
             . self::goal_form('tr_add', ['goal' => $id], '<div class="ht-send"><button class="ht-btn">Kaydet · Записать</button>'
-                . '<span class="ht-hint">Каждая строка — отдельная запись: <code>merhaba — привет</code>. Строка без тире — заметка.<br>Выделите буквы мышкой и нажмите кружок нужного цвета. Одинаковым цветом отмечайте то, что соответствует друг другу: baba<mark class="hl hl2">m</mark><mark class="hl">da</mark> — <mark class="hl">у</mark> <mark class="hl hl2">моего</mark> отца.<br>Боту можно так же: <code>турецкий: teşekkürler — спасибо</code></span></div>',
+                . '<span class="ht-hint">Каждая строка — отдельная запись: <code>merhaba — привет</code>. Строка без тире — заметка, а строки с «- » сразу под ней станут её списком.<br>Выделите буквы мышкой и нажмите кружок нужного цвета. Одинаковым цветом отмечайте то, что соответствует друг другу: baba<mark class="hl hl2">m</mark><mark class="hl">da</mark> — <mark class="hl">у</mark> <mark class="hl hl2">моего</mark> отца.<br>Боту можно так же: <code>турецкий: teşekkürler — спасибо</code></span></div>',
                 '<div class="top"><input type="date" name="day" value="' . esc_attr($today) . '"><div class="ht-keys">'
                 . implode('', array_map(fn ($k) => '<button type="button" data-k="' . $k . '">' . $k . '</button>', ['ç', 'ğ', 'ı', 'İ', 'ö', 'ş', 'ü', 'â']))
                 . '<span class="ht-hls">выделить<button type="button" class="hlb c1" data-m="*" title="Выделите часть текста и нажмите: красный">а</button><button type="button" class="hlb c2" data-m="^" title="Бирюзовый">а</button><button type="button" class="hlb c3" data-m="~" title="Золотой">а</button></span>'
@@ -1100,9 +1102,9 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
                 $del = '<span class="acts"><button type="button" class="ed" title="Изменить">✎</button>'
                     . self::goal_form('note_delete', ['note' => (int) $e['id'], 'goal' => $id, 'anchor' => $anchor], '<button class="x" title="Удалить" onclick="return confirm(\'Удалить запись?\')">×</button>', '', '') . '</span>'
                     . self::goal_form('tr_edit', ['note' => (int) $e['id'], 'goal' => $id, 'anchor' => $anchor], '<button class="ht-btn">Сохранить</button>',
-                        '<input type="text" name="line" value="' . esc_attr(Hastan_Turkish::as_line($e)) . '"><span class="ht-keys">' . '<span class="ht-hls">выделить<button type="button" class="hlb c1" data-m="*" title="Выделите часть текста и нажмите: красный">а</button><button type="button" class="hlb c2" data-m="^" title="Бирюзовый">а</button><button type="button" class="hlb c3" data-m="~" title="Золотой">а</button></span>' . '</span>', 'class="ef"');
+                        ($e['tr'] === '' ? '<textarea name="line" rows="' . max(3, substr_count($e['body'], "\n") * 2 + 2) . '">' . esc_textarea($e['body']) . '</textarea>' : '<input type="text" name="line" value="' . esc_attr(Hastan_Turkish::as_line($e)) . '">') . '<span class="ht-keys">' . '<span class="ht-hls">выделить<button type="button" class="hlb c1" data-m="*" title="Выделите часть текста и нажмите: красный">а</button><button type="button" class="hlb c2" data-m="^" title="Бирюзовый">а</button><button type="button" class="hlb c3" data-m="~" title="Золотой">а</button></span>' . '</span>', 'class="ef"');
                 if ($e['tr'] === '') {
-                    echo '<div class="ht-e note"><span class="star">✦</span><span class="txt">' . Hastan_Turkish::mark($e['body']) . '</span>' . $del . '</div>';
+                    echo '<div class="ht-e note"><span class="star">✦</span><div class="txt">' . Hastan_Turkish::note_html($e['body']) . '</div>' . $del . '</div>';
                 } else {
                     echo '<div class="ht-e ' . esc_attr($e['kind']) . '" lang="tr"><span class="tr">' . Hastan_Turkish::mark($e['tr']) . '</span>' . ($e['body'] !== '' ? '<span class="ru" lang="ru">' . Hastan_Turkish::mark($e['body']) . '</span>' : '') . $del . '</div>';
                 }
@@ -1132,10 +1134,10 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
         }
         echo '</aside></div>';
 
-        echo '<script>(function(){var t=document.getElementById("ht-lines");document.addEventListener("focusin",function(ev){if(ev.target.matches("#ht-lines,.ht-e .ef input"))t=ev.target;});'
+        echo '<script>(function(){var t=document.getElementById("ht-lines");document.addEventListener("focusin",function(ev){if(ev.target.matches("#ht-lines,.ht-e .ef input,.ht-e .ef textarea"))t=ev.target;});'
             . 'document.querySelectorAll(".ht-keys button").forEach(function(b){b.addEventListener("mousedown",function(ev){ev.preventDefault();});b.addEventListener("click",function(){var s=t.selectionStart,e=t.selectionEnd,v=t.value,k;if(b.dataset.k){k=b.dataset.k;t.value=v.slice(0,s)+k+v.slice(e);t.focus();t.selectionStart=t.selectionEnd=s+k.length;return;}'
             . 'if(s===e){t.focus();return;}var m=b.dataset.m||"*";k=m+v.slice(s,e).replace(/[*^~]/g,"")+m;t.value=v.slice(0,s)+k+v.slice(e);t.focus();t.selectionStart=s;t.selectionEnd=s+k.length;});});'
-            . 'document.querySelectorAll(".ht-e .ed").forEach(function(b){b.addEventListener("click",function(){var r=b.closest(".ht-e");r.classList.toggle("editing");var i=r.querySelector(".ef input");if(r.classList.contains("editing")){i.focus();t=i;}});});'
+            . 'document.querySelectorAll(".ht-e .ed").forEach(function(b){b.addEventListener("click",function(){var r=b.closest(".ht-e");r.classList.toggle("editing");var i=r.querySelector(".ef input,.ef textarea");if(r.classList.contains("editing")){i.focus();t=i;}});});'
             . 'var cards=' . wp_json_encode($cards) . ',f=document.getElementById("ht-flip"),i=-1;function show(){if(!cards.length)return;var j=cards.length>1?Math.floor(Math.random()*cards.length):0;if(j===i&&cards.length>1)j=(j+1)%cards.length;i=j;f.classList.remove("on");setTimeout(function(){document.getElementById("ht-ftr").innerHTML=cards[i].tr;document.getElementById("ht-fru").innerHTML=cards[i].ru;document.getElementById("ht-fk").textContent=cards[i].k;},f.classList.contains("on")?280:0);}'
             . 'f.addEventListener("click",function(){f.classList.toggle("on");});var n=document.getElementById("ht-next");if(n)n.addEventListener("click",show);show();'
             . 'var q=document.getElementById("ht-q");if(q)q.addEventListener("input",function(){var v=q.value.replace(/I/g,"ı").replace(/İ/g,"i").toLowerCase().trim();document.querySelectorAll("#ht-list .ht-w").forEach(function(w){w.style.display=!v||w.dataset.s.indexOf(v)>-1?"":"none";});document.querySelectorAll("#ht-list .ht-l").forEach(function(h){var x=h.nextElementSibling,any=false;while(x&&x.classList.contains("ht-w")){if(x.style.display!=="none")any=true;x=x.nextElementSibling;}h.style.display=any?"":"none";});});})();</script>';
@@ -1212,8 +1214,9 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
                 break;
             case 'tr_edit':
                 $goal = Hastan_Goals::get($back);
-                if ($goal && $goal['kind'] === 'turkish' && $text('line') !== '') {
-                    Hastan_Turkish::update((int) ($_POST['note'] ?? 0), $text('line'));
+                $line = sanitize_textarea_field(wp_unslash($_POST['line'] ?? ''));
+                if ($goal && $goal['kind'] === 'turkish' && trim($line) !== '') {
+                    Hastan_Turkish::update((int) ($_POST['note'] ?? 0), $line);
                 }
                 break;
             case 'tr_drill':
