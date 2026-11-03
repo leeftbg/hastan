@@ -64,6 +64,8 @@ class Hastan_Goals
   id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
   goal_id bigint(20) unsigned NOT NULL,
   day date NOT NULL,
+  kind varchar(10) NOT NULL DEFAULT '',
+  tr varchar(255) NOT NULL DEFAULT '',
   body text NOT NULL,
   created_at datetime NOT NULL,
   PRIMARY KEY  (id),
@@ -89,6 +91,10 @@ class Hastan_Goals
         if (!get_option('hastan_course_seeded')) {
             self::seed_course();
             update_option('hastan_course_seeded', 1, false);
+        }
+        if (!get_option('hastan_turkish_seeded')) {
+            Hastan_Turkish::seed();
+            update_option('hastan_turkish_seeded', 1, false);
         }
     }
 
@@ -349,6 +355,10 @@ class Hastan_Goals
             foreach (self::leaves((int) $goal['id']) as $step) {
                 $title = $step['code'] !== '' ? $step['code'] . ' ' . mb_strimwidth($step['title'], 0, 50, '…') : $step['title'];
                 $out[] = "   шаг #{$step['id']} [" . ($marks[(int) $step['state']] ?? 'x') . "] {$title}" . ((int) $step['repeats'] ? ' ↻' . (int) $step['repeats'] : '');
+            }
+            if ($goal['kind'] === 'turkish') {
+                $out[] = '   ' . Hastan_Turkish::summary((int) $goal['id']);
+                continue;
             }
             $notes = self::notes((int) $goal['id'], 3);
             if ($notes) {

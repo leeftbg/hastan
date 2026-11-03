@@ -392,6 +392,10 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
             self::exam_page($goal);
             return;
         }
+        if ($goal && $goal['kind'] === 'turkish') {
+            self::turkish_page($goal);
+            return;
+        }
         if ($goal) {
             self::goal_page($goal);
             return;
@@ -416,6 +420,11 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
             if ($total) {
                 echo '<div class="hg-bar"><i class="d" style="width:' . round($done / $total * 100, 1) . '%"></i><i class="p" style="width:' . round($doing / $total * 100, 1) . '%"></i></div>'
                     . '<div class="meta">готово ' . $done . ' из ' . $total . ($doing ? ', в процессе ' . $doing : '') . '</div>';
+            }
+            if ($g['kind'] === 'turkish') {
+                $c = Hastan_Turkish::counts(Hastan_Turkish::entries((int) $g['id']));
+                echo '<div class="meta">слов ' . $c['word'] . ' · фраз ' . $c['phrase'] . ' · заметок ' . $c['note'] . '</div>';
+                $last = $last && $last[0]['tr'] !== '' ? [['day' => $last[0]['day'], 'body' => $last[0]['tr'] . ' — ' . $last[0]['body']]] : $last;
             }
             if ($last) {
                 echo '<div class="meta">последняя запись ' . esc_html(Hastan_Goals::short_date($last[0]['day'])) . ': ' . esc_html(mb_strimwidth($last[0]['body'], 0, 60, '…')) . '</div>';
@@ -443,7 +452,14 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
                 . self::goal_form('note_delete', ['note' => (int) $note['id'], 'goal' => $id], '<button class="x" title="×" onclick="return confirm(\'?\')">×</button>') . '</li>';
         }
         $html .= ($notes ? '</ul>' : '') . '</div>';
+        return $html . self::goal_edit($goal);
+    }
 
+    /** The goal's title, subtitle, due and status, folded away. */
+    private static function goal_edit(array $goal): string
+    {
+        $id = (int) $goal['id'];
+        $html = '';
         $status = '';
         foreach (Hastan_Goals::STATUSES as $key => $label) {
             $status .= '<option value="' . $key . '"' . selected($goal['status'], $key, false) . '>' . esc_html($label) . '</option>';
@@ -722,6 +738,204 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
         echo '</div>';
     }
 
+    /** "3 ноября" and the Turkish weekday, for a diary page. */
+    private static function tr_date(string $day): array
+    {
+        $months = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+        $gun = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
+        $t = strtotime($day . ' 12:00:00');
+        return [(int) date('j', $t) . ' ' . $months[(int) date('n', $t) - 1], $gun[(int) date('w', $t)], date('Y', $t)];
+    }
+
+    /** The Turkish diary: İznik tiles, a word card to flip, a page per day and a small dictionary. */
+    private static function turkish_page(array $goal): void
+    {
+        $id = (int) $goal['id'];
+        $entries = Hastan_Turkish::entries($id);
+        $days = Hastan_Turkish::by_day($entries);
+        $dict = Hastan_Turkish::dictionary($entries);
+        $c = Hastan_Turkish::counts($entries);
+        $now = Hastan_Settings::now();
+        $today = $now->format('Y-m-d');
+
+        // Weeks from the first entry (or this week): a tile for every week, lit when something was written.
+        $monday = fn (string $d) => date('Y-m-d', strtotime($d . ' 12:00:00 -' . ((int) date('N', strtotime($d . ' 12:00:00')) - 1) . ' days'));
+        $start = $monday($entries ? (string) min(array_keys($days)) : $today);
+        $lit = [];
+        foreach (array_keys($days) as $d) {
+            $lit[$monday($d)] = ($lit[$monday($d)] ?? 0) + count($days[$d]);
+        }
+        $this_week = $monday($today);
+        $weeks = [];
+        for ($w = $start, $i = 0; $i < 26 || $w <= $this_week; $i++, $w = date('Y-m-d', strtotime($w . ' 12:00:00 +7 days'))) {
+            $weeks[] = $w;
+        }
+
+        echo '<div class="wrap ht"><a class="hg-back" href="' . esc_url(self::goal_url()) . '">← Все цели</a>';
+        self::notice();
+        echo self::goal_styles();
+        $star = "<svg xmlns='http://www.w3.org/2000/svg' width='72' height='72' viewBox='0 0 72 72'><g fill='none' stroke='%2364c7d6' stroke-opacity='.28' stroke-width='1.4'>"
+            . "<path d='M36 14l6.4 15.6L58 36l-15.6 6.4L36 58l-6.4-15.6L14 36l15.6-6.4z'/><rect x='24' y='24' width='24' height='24' transform='rotate(45 36 36)'/><rect x='24' y='24' width='24' height='24'/>"
+            . "<circle cx='36' cy='36' r='4'/><path d='M0 0l10 10M72 0L62 10M0 72l10-10M72 72L62 62'/><circle cx='0' cy='0' r='8'/><circle cx='72' cy='0' r='8'/><circle cx='0' cy='72' r='8'/><circle cx='72' cy='72' r='8'/></g></svg>";
+        $band = "<svg xmlns='http://www.w3.org/2000/svg' width='28' height='14' viewBox='0 0 28 14'><path d='M0 7L7 0l7 7-7 7z' fill='%23c8402c'/><path d='M14 7l7-7 7 7-7 7z' fill='%232a9d8f'/><circle cx='14' cy='7' r='1.6' fill='%23fbf6ec'/></svg>";
+        $tile = "<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'><path d='M12 3l2.6 6.4L21 12l-6.4 2.6L12 21l-2.6-6.4L3 12l6.4-2.6z' fill='%23fbf6ec' fill-opacity='.85'/><circle cx='12' cy='12' r='2.2' fill='%23c8402c'/></svg>";
+        echo '<style>
+.ht{--cobalt:#1e4c9a;--navy:#122a5c;--turq:#2a9d8f;--sky:#64c7d6;--coral:#c8402c;--gold:#c9a14a;--cream:#fbf6ec;--paper:#fffdf8;--ink:#1f2a37;--muted:#7a7466;--line:#eadfca;max-width:1180px}
+.ht-hero{position:relative;overflow:hidden;border-radius:18px;margin:8px 0 18px;color:#fff;background:url("data:image/svg+xml,' . $star . '"),radial-gradient(ellipse at 20% 0%,#2a5fb8,var(--cobalt) 45%,var(--navy));box-shadow:0 10px 30px rgba(18,42,92,.25)}
+.ht-hero:after{content:"";position:absolute;left:0;right:0;bottom:0;height:14px;background:url("data:image/svg+xml,' . $band . '") repeat-x;opacity:.95}
+.ht-in{position:relative;display:flex;gap:28px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:30px 34px 40px}
+.ht-eyebrow{font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--sky);font-weight:600}
+.ht-hero h1{color:#fff;font-family:Georgia,"Times New Roman",serif;font-size:36px;font-weight:600;margin:6px 0 6px;padding:0;letter-spacing:.01em}
+.ht-hero h1 i{font-weight:400;color:#f3d9a4;font-size:22px;margin-left:10px}
+.ht-hero .sub{opacity:.85;font-size:14px}
+.ht-stats{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}.ht-stats span{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);border-radius:22px;padding:5px 13px;font-size:12.5px;backdrop-filter:blur(2px)}
+.ht-stats b{font-size:16px;margin-right:4px}.ht-stats em{font-style:normal;opacity:.65;margin-left:4px;font-size:11px}
+.ht-tulip{position:absolute;right:190px;bottom:4px;width:84px;opacity:.9;pointer-events:none}
+.ht-nazar{position:relative;flex:none;width:136px;height:136px;border-radius:50%;background:radial-gradient(circle,#0b1a3a 0 27%,#8fd3ef 27.5% 45%,#fff 45.5% 62%,#1b5bc4 62.5%);box-shadow:0 0 0 6px rgba(255,255,255,.08),0 8px 22px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center}
+.ht-nazar:before{content:"";position:absolute;top:22%;left:26%;width:16%;height:10%;border-radius:50%;background:rgba(255,255,255,.55);transform:rotate(-30deg)}
+.ht-nazar .n{position:relative;text-align:center;line-height:1;font-weight:700;font-size:22px}.ht-nazar small{display:block;font-size:9px;font-weight:500;letter-spacing:.08em;margin-top:2px;opacity:.85}
+.ht-row{display:grid;grid-template-columns:1.55fr 1fr;gap:16px;margin-bottom:16px}
+.ht-card{background:var(--paper);border:1px solid var(--line);border-radius:16px;padding:20px 22px;position:relative}
+.ht-card h2{font-family:Georgia,serif;font-size:21px;font-weight:600;color:var(--navy);margin:0 0 2px}.ht-card>.ru{color:var(--muted);font-size:13px;margin-bottom:14px}
+.ht-form .top{display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap}
+.ht-form input[type=date]{border-radius:10px;border-color:var(--line)}
+.ht-form textarea{box-sizing:border-box;width:100%;min-height:118px;border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-size:15px;line-height:1.6;background:#fff url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'10\' height=\'24\'%3E%3Cpath d=\'M0 23.5h10\' stroke=\'%23f1e8d6\'/%3E%3C/svg%3E") 0 11px;font-family:Georgia,serif;resize:vertical}
+.ht-form textarea:focus{border-color:var(--turq);box-shadow:0 0 0 2px rgba(42,157,143,.18);outline:0}
+.ht-keys{display:flex;gap:5px;flex-wrap:wrap}.ht-keys button{width:32px;height:32px;border-radius:8px;border:1px solid var(--line);background:#fff;font-size:15px;font-family:Georgia,serif;color:var(--cobalt);cursor:pointer}
+.ht-keys button:hover{border-color:var(--turq);background:#eef8f6}
+.ht-send{display:flex;align-items:center;gap:14px;margin-top:12px;flex-wrap:wrap}
+.ht-btn{background:var(--coral);color:#fff;border:0;border-radius:24px;padding:10px 22px;font-size:14px;font-weight:600;cursor:pointer;box-shadow:0 3px 0 #9c2f20}
+.ht-btn:hover{background:#b23722}.ht-btn:active{transform:translateY(2px);box-shadow:0 1px 0 #9c2f20}
+.ht-hint{color:var(--muted);font-size:12px;line-height:1.5}.ht-hint code{background:#f4ecdc;border-radius:4px;padding:1px 5px;font-size:12px}
+.ht-flip{perspective:900px;cursor:pointer;height:190px;margin:4px 0 10px}
+.ht-flip .in{position:relative;width:100%;height:100%;transition:transform .55s;transform-style:preserve-3d}.ht-flip.on .in{transform:rotateY(180deg)}
+.ht-flip .f{position:absolute;inset:0;backface-visibility:hidden;border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:18px}
+.ht-flip .front{background:var(--cobalt) url("data:image/svg+xml,' . $star . '");color:#fff;box-shadow:inset 0 0 0 6px var(--cobalt),inset 0 0 0 8px rgba(243,217,164,.6)}
+.ht-flip .back{background:var(--cream);color:var(--ink);transform:rotateY(180deg);box-shadow:inset 0 0 0 6px var(--cream),inset 0 0 0 8px var(--turq)}
+.ht-flip .w{font-family:Georgia,serif;font-size:28px;line-height:1.2}.ht-flip .back .w{font-family:inherit;font-size:22px}
+.ht-flip .k{font-size:10px;letter-spacing:.18em;text-transform:uppercase;opacity:.7;margin-top:10px}
+.ht-card .more{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--muted)}
+.ht-card .more button{border:1px solid var(--line);background:#fff;border-radius:16px;padding:4px 12px;cursor:pointer;color:var(--cobalt)}
+.ht-weeks{display:flex;align-items:center;gap:16px;margin-bottom:18px;flex-wrap:wrap}
+.ht-weeks .lbl{font-family:Georgia,serif;color:var(--navy);font-size:15px}.ht-weeks .lbl small{display:block;font-family:-apple-system,sans-serif;color:var(--muted);font-size:12px}
+.ht-tiles{display:flex;gap:4px;flex-wrap:wrap}.ht-tiles i{width:22px;height:22px;border-radius:4px;background:#f1eadb;display:block}
+.ht-tiles i.on{background:var(--turq) url("data:image/svg+xml,' . $tile . '") center/18px no-repeat}.ht-tiles i.on.many{background-color:var(--cobalt)}
+.ht-tiles i.now{box-shadow:0 0 0 2px var(--gold)}.ht-tiles i.fut{background:transparent;border:1px dashed #e2d7c1}
+.ht-main{display:grid;grid-template-columns:1.55fr 1fr;gap:16px;align-items:start}
+.ht-sec{font-family:Georgia,serif;font-size:20px;color:var(--navy);margin:4px 0 12px;display:flex;align-items:baseline;gap:10px}.ht-sec small{font-family:-apple-system,sans-serif;font-size:12px;color:var(--muted)}
+.ht-day{background:var(--paper);border:1px solid var(--line);border-radius:16px;padding:18px 22px 12px;margin-bottom:14px;scroll-margin-top:50px;position:relative}
+.ht-day:before{content:"";position:absolute;left:22px;right:22px;top:0;height:3px;border-radius:0 0 3px 3px;background:linear-gradient(90deg,var(--coral),var(--gold),var(--turq),var(--cobalt))}
+.ht-dh{display:flex;align-items:baseline;gap:10px;margin-bottom:8px}.ht-dh b{font-family:Georgia,serif;font-size:19px;color:var(--ink);font-weight:600}
+.ht-dh span{color:var(--turq);font-style:italic;font-family:Georgia,serif}.ht-dh em{margin-left:auto;font-style:normal;color:var(--muted);font-size:12px}
+.ht-e{display:flex;align-items:baseline;gap:12px;padding:8px 0;border-top:1px dashed var(--line)}
+.ht-e .tr{font-family:Georgia,serif;font-size:17px;color:var(--cobalt);font-weight:600}.ht-e .ru{color:#4b5563;font-size:14px}.ht-e .ru:before{content:"— ";color:#c9bfa9}
+.ht-e.phrase .tr{font-style:italic;font-weight:500}.ht-e.phrase .tr:before{content:"«";color:var(--coral)}.ht-e.phrase .tr:after{content:"»";color:var(--coral)}
+.ht-e.note{color:var(--ink);font-size:14px;line-height:1.5}.ht-e.note .star{flex:none;color:var(--coral);font-size:12px}
+.ht-e form{margin-left:auto;opacity:0;transition:opacity .15s}.ht-e:hover form{opacity:1}.ht-e .x{border:0;background:none;color:#b32d2e;cursor:pointer;font-size:16px}
+.ht-empty{text-align:center;padding:34px 20px;color:var(--muted)}.ht-empty .w{font-family:Georgia,serif;font-size:26px;color:var(--cobalt);margin-bottom:6px}
+.ht-dict{position:sticky;top:44px}
+.ht-dict input[type=search]{box-sizing:border-box;width:100%;border-radius:20px;border:1px solid var(--line);padding:6px 14px;margin-bottom:10px}
+.ht-abc{display:flex;flex-wrap:wrap;gap:2px;margin-bottom:10px}.ht-abc a,.ht-abc span{width:22px;text-align:center;font-size:12px;font-family:Georgia,serif;padding:2px 0;border-radius:4px;text-decoration:none}
+.ht-abc a{color:var(--cobalt);background:#eef3fb;font-weight:600}.ht-abc span{color:#d4cab6}
+.ht-list{max-height:560px;overflow:auto;margin:0 -6px;padding:0 6px}
+.ht-l{font-family:Georgia,serif;color:var(--coral);font-size:15px;margin:10px 0 2px;border-bottom:1px solid var(--line);scroll-margin-top:10px}
+.ht-w{display:flex;gap:8px;font-size:13.5px;padding:4px 0}.ht-w .tr{color:var(--cobalt);font-weight:600;font-family:Georgia,serif}.ht-w .ru{color:var(--muted)}
+@media (max-width:900px){.ht-row,.ht-main{grid-template-columns:1fr}.ht-dict{position:static}.ht-tulip{display:none}}
+@media (max-width:600px){.ht-in{padding:22px 22px 34px}.ht-hero h1{font-size:28px}.ht-hero h1 i{display:block;margin:4px 0 0}}
+</style>';
+
+        echo '<div class="ht-hero"><svg class="ht-tulip" viewBox="0 0 60 100" aria-hidden="true"><path d="M30 98C30 76 31 58 30 40" stroke="#2a9d8f" stroke-width="3" fill="none"/>'
+            . '<path d="M30 84C16 76 9 60 11 46c10 9 17 21 19 38z" fill="#2a9d8f"/><path d="M30 74c13-8 20-22 18-34-9 8-16 19-18 34z" fill="#3fb6a8"/>'
+            . '<path d="M30 43C17 41 13 25 17 7c6 8 9 12 13 4 4 8 7 4 13-4 4 18 0 34-13 36z" fill="#c8402c"/><path d="M30 43c-5-6-6-18-3-30 1 5 2 8 3 8s2-3 3-8c3 12 2 24-3 30z" fill="#e2664f"/></svg>'
+            . '<div class="ht-in"><div><div class="ht-eyebrow">Türkçe günlüğüm</div><h1>' . esc_html($goal['title']) . '<i>Türkçe</i></h1>'
+            . '<div class="sub">' . esc_html($goal['subtitle'] !== '' && $goal['subtitle'] !== 'Türkçe günlüğüm · мой дневник' ? $goal['subtitle'] : 'Мой дневник: новые слова, фразы и всё, что узнала') . '</div>'
+            . '<div class="ht-stats"><span><b>' . $c['word'] . '</b>слов<em>kelime</em></span><span><b>' . $c['phrase'] . '</b>фраз<em>ifade</em></span>'
+            . '<span><b>' . $c['note'] . '</b>заметок<em>not</em></span><span><b>' . $c['days'] . '</b>дней с записями<em>gün</em></span></div></div>'
+            . '<div class="ht-nazar" title="Слова и фразы в словарике"><div class="n">' . count($dict) . '<small>' . 'KELİME' . '</small></div></div></div></div>';
+
+        // Write, and the word card.
+        $cards = array_map(fn ($e) => ['tr' => $e['tr'], 'ru' => $e['body'], 'k' => $e['kind'] === 'phrase' ? 'ifade · фраза' : 'kelime · слово'], $dict);
+        echo '<div class="ht-row"><div class="ht-card ht-form"><h2>Bugün ne öğrendim?</h2><div class="ru">Что я сегодня узнала</div>'
+            . self::goal_form('tr_add', ['goal' => $id], '<div class="ht-send"><button class="ht-btn">Kaydet · Записать</button>'
+                . '<span class="ht-hint">Каждая строка — отдельная запись: <code>merhaba — привет</code>. Строка без тире — заметка.<br>Боту можно так же: <code>турецкий: teşekkürler — спасибо</code></span></div>',
+                '<div class="top"><input type="date" name="day" value="' . esc_attr($today) . '"><div class="ht-keys">'
+                . implode('', array_map(fn ($k) => '<button type="button" data-k="' . $k . '">' . $k . '</button>', ['ç', 'ğ', 'ı', 'İ', 'ö', 'ş', 'ü', 'â']))
+                . '</div></div><textarea name="lines" id="ht-lines" required placeholder="merhaba — привет&#10;günaydın — доброе утро&#10;nasılsın? — как дела?&#10;ı без точки читается как глухое «ы»"></textarea>', '')
+            . '</div><div class="ht-card"><h2>Kelime kartı</h2><div class="ru">Нажмите на карточку, чтобы перевернуть</div>'
+            . '<div class="ht-flip" id="ht-flip"><div class="in"><div class="f front"><div class="w" id="ht-ftr">Merhaba!</div><div class="k" id="ht-fk">kelime · слово</div></div>'
+            . '<div class="f back"><div class="w" id="ht-fru">Привет!</div><div class="k">türkçe → русский</div></div></div></div>'
+            . '<div class="more"><span id="ht-fn">' . ($cards ? 'из ' . count($cards) . ' в словарике' : 'Здесь появятся ваши слова') . '</span>'
+            . ($cards ? '<button type="button" id="ht-next">Başka · ещё</button>' : '') . '</div></div></div>';
+
+        // Weeks.
+        $lit_weeks = count($lit);
+        echo '<div class="ht-weeks"><div class="lbl">Hafta hafta<small>неделя за неделей · ' . $lit_weeks . ' ' . self::plural($lit_weeks, ['неделя', 'недели', 'недель']) . ' с записями</small></div><div class="ht-tiles">';
+        foreach ($weeks as $w) {
+            $n = $lit[$w] ?? 0;
+            $cls = $w > $this_week ? 'fut' : ($n ? 'on' . ($n >= 6 ? ' many' : '') : '');
+            $till = date('d.m', strtotime($w . ' 12:00:00 +6 days'));
+            echo '<i class="' . $cls . ($w === $this_week ? ' now' : '') . '" title="' . esc_attr(Hastan_Goals::short_date($w) . '–' . $till . ($n ? ': записей ' . $n : '')) . '"></i>';
+        }
+        echo '</div></div>';
+
+        // Diary pages and the dictionary.
+        echo '<div class="ht-main"><div><div class="ht-sec">Günlük <small>дневник</small></div>';
+        if (!$days) {
+            echo '<div class="ht-day ht-empty"><div class="w">Hoş geldin!</div>Добро пожаловать. Первая страница пока пустая — можно начать с <code>merhaba — привет</code>.</div>';
+        }
+        foreach ($days as $day => $list) {
+            [$date, $gun, $year] = self::tr_date($day);
+            $words = count(array_filter($list, fn ($e) => $e['tr'] !== ''));
+            echo '<section class="ht-day" id="d' . esc_attr(str_replace('-', '', $day)) . '"><div class="ht-dh"><b>' . esc_html($date) . ($year !== $now->format('Y') ? ' ' . esc_html($year) : '') . '</b><span>' . esc_html($gun) . '</span>'
+                . '<em>' . ($words ? $words . ' ' . self::plural($words, ['запись', 'записи', 'записей']) . ' по-турецки' : 'заметки') . '</em></div>';
+            foreach ($list as $e) {
+                $del = self::goal_form('note_delete', ['note' => (int) $e['id'], 'goal' => $id, 'anchor' => 'd' . str_replace('-', '', $day)], '<button class="x" title="Удалить" onclick="return confirm(\'Удалить запись?\')">×</button>', '', '');
+                if ($e['tr'] === '') {
+                    echo '<div class="ht-e note"><span class="star">✦</span><span>' . esc_html($e['body']) . '</span>' . $del . '</div>';
+                } else {
+                    echo '<div class="ht-e ' . esc_attr($e['kind']) . '" lang="tr"><span class="tr">' . esc_html($e['tr']) . '</span>' . ($e['body'] !== '' ? '<span class="ru" lang="ru">' . esc_html($e['body']) . '</span>' : '') . $del . '</div>';
+                }
+            }
+            echo '</section>';
+        }
+        echo '</div><aside class="ht-card ht-dict"><h2>Sözlük</h2><div class="ru">Словарик: всё по алфавиту</div>';
+        if ($dict) {
+            $groups = [];
+            foreach ($dict as $e) {
+                $groups[Hastan_Turkish::initial($e['tr'])][] = $e;
+            }
+            echo '<input type="search" id="ht-q" placeholder="Ara · поиск"><div class="ht-abc">';
+            foreach (mb_str_split('ABCÇDEFGĞHIİJKLMNOÖPRSŞTUÜVYZ') as $L) {
+                echo isset($groups[$L]) ? '<a href="#L' . esc_attr(bin2hex($L)) . '">' . esc_html($L) . '</a>' : '<span>' . esc_html($L) . '</span>';
+            }
+            echo '</div><div class="ht-list" id="ht-list">';
+            foreach ($groups as $L => $list) {
+                echo '<div class="ht-l" id="L' . esc_attr(bin2hex($L)) . '">' . esc_html($L) . '</div>';
+                foreach ($list as $e) {
+                    echo '<div class="ht-w" data-s="' . esc_attr(Hastan_Turkish::lower($e['tr'] . ' ' . $e['body'])) . '"><span class="tr" lang="tr">' . esc_html($e['tr']) . '</span><span class="ru">' . esc_html($e['body']) . '</span></div>';
+                }
+            }
+            echo '</div>';
+        } else {
+            echo '<p class="ht-hint">Слова и фразы из дневника сами соберутся здесь по турецкому алфавиту.</p>';
+        }
+        echo '</aside></div>';
+
+        echo '<script>(function(){var t=document.getElementById("ht-lines");document.querySelectorAll(".ht-keys button").forEach(function(b){b.addEventListener("click",function(){var k=b.dataset.k,s=t.selectionStart,e=t.selectionEnd;t.value=t.value.slice(0,s)+k+t.value.slice(e);t.focus();t.selectionStart=t.selectionEnd=s+k.length;});});'
+            . 'var cards=' . wp_json_encode($cards) . ',f=document.getElementById("ht-flip"),i=-1;function show(){if(!cards.length)return;var j=cards.length>1?Math.floor(Math.random()*cards.length):0;if(j===i&&cards.length>1)j=(j+1)%cards.length;i=j;f.classList.remove("on");setTimeout(function(){document.getElementById("ht-ftr").textContent=cards[i].tr;document.getElementById("ht-fru").textContent=cards[i].ru||"—";document.getElementById("ht-fk").textContent=cards[i].k;},f.classList.contains("on")?280:0);}'
+            . 'f.addEventListener("click",function(){f.classList.toggle("on");});var n=document.getElementById("ht-next");if(n)n.addEventListener("click",show);show();'
+            . 'var q=document.getElementById("ht-q");if(q)q.addEventListener("input",function(){var v=q.value.replace(/I/g,"ı").replace(/İ/g,"i").toLowerCase().trim();document.querySelectorAll("#ht-list .ht-w").forEach(function(w){w.style.display=!v||w.dataset.s.indexOf(v)>-1?"":"none";});document.querySelectorAll("#ht-list .ht-l").forEach(function(h){var x=h.nextElementSibling,any=false;while(x&&x.classList.contains("ht-w")){if(x.style.display!=="none")any=true;x=x.nextElementSibling;}h.style.display=any?"":"none";});});})();</script>';
+
+        echo self::goal_edit($goal) . '</div>';
+    }
+
+    private static function plural(int $n, array $forms): string
+    {
+        $n = abs($n) % 100;
+        $d = $n % 10;
+        return $forms[$n > 10 && $n < 20 ? 2 : ($d === 1 ? 0 : ($d >= 2 && $d <= 4 ? 1 : 2))];
+    }
+
     public static function handle_goal(): void
     {
         self::check('hastan_goal');
@@ -781,6 +995,14 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
                 break;
             case 'note_delete':
                 Hastan_Goals::delete_note((int) ($_POST['note'] ?? 0));
+                break;
+            case 'tr_add':
+                $day = preg_match('/^\d{4}-\d{2}-\d{2}$/', $text('day')) ? $text('day') : Hastan_Settings::now()->format('Y-m-d');
+                $goal = Hastan_Goals::get($back);
+                if ($goal && $goal['kind'] === 'turkish') {
+                    Hastan_Turkish::add_lines($back, $day, sanitize_textarea_field(wp_unslash($_POST['lines'] ?? '')));
+                    $anchor = 'd' . str_replace('-', '', $day);
+                }
                 break;
         }
         wp_safe_redirect(self::goal_url($back, $anchor));
