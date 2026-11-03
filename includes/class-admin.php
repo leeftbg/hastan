@@ -166,17 +166,25 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
             . '<input type="file" name="pack" accept=".zip"> <button class="button">' . (Hastan_Picture::exists() ? 'Загрузить новую картинку (начнётся заново)' : 'Загрузить') . '</button></form>';
     }
 
+    /** What came from the phone in the last week, to see at a glance whether the automation ran. */
     private static function movement_today(): string
     {
-        $day = Hastan_Settings::now()->format('Y-m-d');
-        $parts = [];
-        if (($move = Hastan_Steps::get_move($day)) !== null) {
-            $parts[] = $move . ' из ' . Hastan_Steps::move_goal() . ' ккал подвижности';
+        $rows = Hastan_Steps::recent(7);
+        if (!$rows) {
+            return ' За неделю с телефона ничего не приходило.';
         }
-        if ($steps = Hastan_Steps::get($day)) {
-            $parts[] = $steps . ' шагов';
+        $lines = [];
+        foreach ($rows as $row) {
+            $parts = [];
+            if ($row['move_kcal'] !== null) {
+                $parts[] = $row['move_kcal'] . ' из ' . Hastan_Steps::move_goal() . ' ккал';
+            }
+            if ((int) $row['steps']) {
+                $parts[] = $row['steps'] . ' шагов';
+            }
+            $lines[] = Hastan_Goals::short_date($row['day']) . ': ' . implode(', ', $parts) . ' (пришло в ' . Hastan_DB::utc_to_local($row['updated_at'])->format('H:i') . ')';
         }
-        return $parts ? ' Сегодня пришло: ' . implode(', ', $parts) . '.' : '';
+        return '<br>Пришло с телефона за неделю (дней без строки не было вовсе):<br>' . implode('<br>', array_map('esc_html', $lines));
     }
 
     public static function save_picture(): void

@@ -69,6 +69,14 @@ class Hastan_Steps
         return $steps === null ? null : (int) $steps;
     }
 
+    /** The last days that came from the phone, newest first. */
+    public static function recent(int $days = 7): array
+    {
+        global $wpdb;
+        $from = Hastan_Settings::now()->modify('-' . ($days - 1) . ' days')->format('Y-m-d');
+        return $wpdb->get_results($wpdb->prepare('SELECT * FROM ' . self::table() . ' WHERE day >= %s ORDER BY day DESC', $from), ARRAY_A);
+    }
+
     /** Shortcuts may send "8532", 8532.0 or "8 532,0"; any of them is fine. */
     private static function parse_number($value): int
     {
