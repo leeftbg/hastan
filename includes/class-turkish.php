@@ -69,7 +69,7 @@ class Hastan_Turkish
     }
 
     /** Highlight marks: *красный*, ^бирюзовый^, ~золотой~. Matching parts get the same colour. */
-    const MARKS = ['*' => 'hl', '^' => 'hl hl2', '~' => 'hl hl3'];
+    const MARKS = ['*' => 'hl', '^' => 'hl hl2', '~' => 'hl hl3', '#' => 'hl hl4'];
 
     public static function mark(string $s): string
     {
