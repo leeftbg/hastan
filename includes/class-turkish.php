@@ -153,7 +153,30 @@ class Hastan_Turkish
     /** "| a | b |": a row of a small table in a note. */
     public static function is_row(string $line): bool
     {
-        return (bool) preg_match('/^\s*\|/u', $line);
+        // "| a | b |" or "a | b |" (the first bar is easy to lose); one bar alone stays text.
+        return (bool) preg_match('/^\s*\|/u', $line) || substr_count($line, '|') >= 2;
+    }
+
+    /** Table rows saved as separate notes (typed without the first bar) go back to the note above. */
+    public static function fix_rows(): void
+    {
+        global $wpdb;
+        $goal = self::goal();
+        if (!$goal) {
+            return;
+        }
+        $prev = null;
+        foreach (self::entries((int) $goal['id']) as $e) {
+            $body = trim((string) $e['body']);
+            if ($e['kind'] === 'note' && $prev && $prev['kind'] === 'note' && $prev['day'] === $e['day']
+                && !preg_match('/\R/u', $body) && self::is_row($body)) {
+                $prev['body'] = rtrim((string) $prev['body']) . "\n" . $body;
+                $wpdb->update(Hastan_Goals::notes_table(), ['body' => $prev['body']], ['id' => (int) $prev['id']]);
+                $wpdb->delete(Hastan_Goals::notes_table(), ['id' => (int) $e['id']]);
+                continue;
+            }
+            $prev = $e;
+        }
     }
 
     /** Rows as typed, the first one the header; "|---|---|" lines are skipped. */
