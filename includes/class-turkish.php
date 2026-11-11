@@ -150,12 +150,46 @@ class Hastan_Turkish
         return (bool) preg_match('/^\s*(?:[•·]|[-–—](?=\s))/u', $line);
     }
 
-    /** A note with a list: lines starting with "- " become points. */
+    /** "| a | b |": a row of a small table in a note. */
+    public static function is_row(string $line): bool
+    {
+        return (bool) preg_match('/^\s*\|/u', $line);
+    }
+
+    /** Rows as typed, the first one the header; "|---|---|" lines are skipped. */
+    private static function table_html(array $rows): string
+    {
+        $html = '<div class="tbl"><table>';
+        $first = true;
+        foreach ($rows as $row) {
+            if (preg_match('/^[\s|:\-–—]+$/u', $row)) {
+                continue;
+            }
+            $cells = array_map('trim', explode('|', trim(trim($row), '|')));
+            $tag = $first ? 'th' : 'td';
+            $html .= ($first ? '<thead>' : '') . '<tr>' . implode('', array_map(fn ($c) => '<' . $tag . '>' . self::mark($c) . '</' . $tag . '>', $cells)) . '</tr>' . ($first ? '</thead><tbody>' : '');
+            $first = false;
+        }
+        return $html . ($first ? '' : '</tbody>') . '</table></div>';
+    }
+
+    /** A note with a list ("- " lines) and small tables ("| … |" lines). */
     public static function note_html(string $body): string
     {
         $html = '';
         $list = false;
+        $rows = [];
         foreach (preg_split('/\R/u', $body) as $line) {
+            if (self::is_row($line)) {
+                $html .= $list ? '</ul>' : '';
+                $list = false;
+                $rows[] = $line;
+                continue;
+            }
+            if ($rows) {
+                $html .= self::table_html($rows);
+                $rows = [];
+            }
             if (trim($line) === '') {
                 continue;
             }
@@ -167,14 +201,14 @@ class Hastan_Turkish
                 $list = false;
             }
         }
-        return $html . ($list ? '</ul>' : '');
+        return $html . ($list ? '</ul>' : '') . ($rows ? self::table_html($rows) : '');
     }
 
     public static function update(int $note_id, string $line): void
     {
         global $wpdb;
         $lines = array_values(array_filter(array_map('trim', preg_split('/\R/u', $line)), 'strlen'));
-        if (count($lines) > 1) {
+        if (count($lines) > 1 || ($lines && self::is_row($lines[0]))) {
             $body = implode("\n", array_map(fn ($l) => self::is_bullet($l) ? '- ' . trim(preg_replace('/^\s*(?:[•·]|[-–—])\s*/u', '', $l)) : $l, $lines));
             $wpdb->update(Hastan_Goals::notes_table(), ['tr' => '', 'body' => $body, 'kind' => 'note'], ['id' => $note_id]);
             return;
@@ -230,6 +264,16 @@ class Hastan_Turkish
     {
         $items = [];
         foreach (preg_split('/\R/u', $text) as $line) {
+            // Table rows go to the note above them as they are, never split at a dash.
+            if (self::is_row($line)) {
+                $last = count($items) - 1;
+                if ($last >= 0 && $items[$last]['kind'] === 'note') {
+                    $items[$last]['ru'] .= "\n" . trim($line);
+                } else {
+                    $items[] = ['tr' => '', 'ru' => trim($line), 'kind' => 'note'];
+                }
+                continue;
+            }
             $e = self::parse($line);
             if (!$e) {
                 continue;
