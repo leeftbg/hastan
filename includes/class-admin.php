@@ -831,6 +831,7 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
 .ht-l{font-family:Georgia,serif;color:var(--coral);font-size:15px;margin:10px 0 2px;border-bottom:1px solid var(--line);scroll-margin-top:10px}
 .ht-w{display:flex;gap:8px;font-size:13.5px;padding:4px 0}.ht-w .tr{color:var(--cobalt);font-weight:600;font-family:Georgia,serif}.ht-w .ru{color:var(--muted)}
 .ht-dh form{margin:0}.ht-mk{border:1px solid var(--line);background:#fff;border-radius:14px;padding:2px 10px;font-size:12px;color:var(--coral);cursor:pointer;font-weight:600}.ht-mk:hover{border-color:var(--coral)}
+.ht-g.ht-topic{display:flex;flex-direction:column;gap:8px;margin:0}.ht-g.ht-topic:hover{transform:none}.ht-topic textarea{width:100%;border:1px solid var(--line);border-radius:10px;padding:8px 10px;font:inherit;font-size:13px;resize:vertical;background:#fff}.ht-topic .ht-mk{align-self:flex-start;padding:5px 12px;font-size:13px}
 .ht-gorev{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-bottom:18px;scroll-margin-top:50px}
 .ht-g{display:block;background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:14px 16px;text-decoration:none;color:var(--ink);transition:box-shadow .15s,transform .15s}.ht-g:hover{box-shadow:0 6px 18px rgba(18,42,92,.12);transform:translateY(-1px);color:var(--ink)}
 .ht-g b{font-family:Georgia,serif;font-size:16px;color:var(--navy);display:block;margin-bottom:2px}.ht-g small{color:var(--muted);font-size:12px}
@@ -901,7 +902,7 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
         $total = count($items);
         $pct = $total ? count($learned) / $total : 0;
         echo '<div class="ht-hero"><div class="ht-in"><div><div class="ht-eyebrow">Görev · задание</div><h1>' . esc_html($drill['title']) . '</h1>'
-            . '<div class="sub">По странице дневника за ' . esc_html($date) . '. Фраза выучена после ' . Hastan_Drills::LEARNED . ' верных ответов в разные дни, ошибка начинает её заново.</div>';
+            . '<div class="sub">' . (trim((string) ($drill['topic'] ?? '')) !== '' ? 'Своя тема: ' . esc_html(rtrim($drill['topic'], " .\n")) : 'По странице дневника за ' . esc_html($date)) . '. Фраза выучена после ' . Hastan_Drills::LEARNED . ' верных ответов в разные дни, ошибка начинает её заново.</div>';
         if ($total) {
             echo '<div class="ht-stats"><span><b>' . count($learned) . '</b>выучено<em>öğrenildi</em></span><span><b>' . count($active) . '</b>осталось<em>kalan</em></span><span><b>' . $total . '</b>всего</span></div>';
         }
@@ -1078,17 +1079,19 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
 
         // Exercises made from diary pages.
         $drills = Hastan_Drills::all($id);
-        if ($drills) {
-            echo '<div class="ht-sec" id="gorev">Görevler <small>задания</small></div><div class="ht-gorev">';
-            foreach ($drills as $d) {
-                [$l, $t] = Hastan_Drills::progress((int) $d['id']);
-                [$dd] = self::tr_date($d['day']);
-                $state = ['pending' => 'готовится…', 'failed' => 'не получилось — откройте, чтобы повторить'][$d['status']] ?? 'выучено ' . $l . ' из ' . $t;
-                echo '<a class="ht-g ' . esc_attr($d['status']) . '" href="' . esc_url(self::drill_url($id, (int) $d['id'])) . '"><b>' . esc_html($d['title']) . '</b><small>страница ' . esc_html($dd) . '</small>'
-                    . '<div class="bar"><i style="width:' . ($t ? round($l / $t * 100, 1) : 0) . '%"></i></div><small>' . esc_html($state) . '</small></a>';
-            }
-            echo '</div>';
+        echo '<div class="ht-sec" id="gorev">Görevler <small>задания</small></div><div class="ht-gorev">';
+        foreach ($drills as $d) {
+            [$l, $t] = Hastan_Drills::progress((int) $d['id']);
+            [$dd] = self::tr_date($d['day']);
+            $state = ['pending' => 'готовится…', 'failed' => 'не получилось — откройте, чтобы повторить'][$d['status']] ?? 'выучено ' . $l . ' из ' . $t;
+            $src = trim((string) ($d['topic'] ?? '')) !== '' ? 'своя тема' : 'страница ' . $dd;
+            echo '<a class="ht-g ' . esc_attr($d['status']) . '" href="' . esc_url(self::drill_url($id, (int) $d['id'])) . '"><b>' . esc_html($d['title']) . '</b><small>' . esc_html($src) . '</small>'
+                . '<div class="bar"><i style="width:' . ($t ? round($l / $t * 100, 1) : 0) . '%"></i></div><small>' . esc_html($state) . '</small></a>';
         }
+        echo self::goal_form('tr_topic', ['goal' => $id], '<button class="ht-mk">＋ Задание на тему</button>',
+            '<b>Своя тема</b><textarea name="topic" rows="3" required placeholder="Например: местный падеж -da/-de, или прошедшее время на -dı, или слова: masa, kapı, pencere, sandalye"></textarea>',
+            'class="ht-g ht-topic"');
+        echo '</div>';
 
         // Diary pages and the dictionary.
         echo '<div class="ht-main"><div><div class="ht-sec">Günlük <small>дневник</small></div>';
@@ -1223,6 +1226,14 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
                     Hastan_Turkish::update((int) ($_POST['note'] ?? 0), $line);
                 }
                 break;
+            case 'tr_topic':
+                $goal = Hastan_Goals::get($back);
+                $topic = trim(sanitize_textarea_field(wp_unslash($_POST['topic'] ?? '')));
+                if ($goal && $goal['kind'] === 'turkish' && $topic !== '') {
+                    wp_safe_redirect(self::drill_url($back, Hastan_Drills::request($back, Hastan_Settings::now()->format('Y-m-d'), mb_substr($topic, 0, 2000))));
+                    exit;
+                }
+                break;
             case 'tr_drill':
                 $goal = Hastan_Goals::get($back);
                 $day = $text('day');
@@ -1250,7 +1261,7 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
                 switch (sanitize_key($_POST['op'])) {
                     case 'drill_retry':
                         Hastan_Drills::delete($did);
-                        $did = Hastan_Drills::request($back, $drill['day']);
+                        $did = Hastan_Drills::request($back, $drill['day'], (string) ($drill['topic'] ?? ''));
                         break;
                     case 'drill_check':
                         $answers = [];
