@@ -1367,64 +1367,134 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
 
     public static function board_page(): void
     {
-        $tasks = Hastan_DB::open_tasks();
         $action_url = admin_url('admin-post.php');
+        // Tasks grouped by project, in the order of the settings; tasks without a project go last.
+        $groups = array_fill_keys(Hastan_Settings::projects(), []);
+        foreach (Hastan_DB::open_tasks() as $task) {
+            $name = Hastan_Settings::canonical_project($task['project']);
+            $groups[$name][] = $task;
+        }
+        if (isset($groups[''])) {
+            $none = $groups[''];
+            unset($groups['']);
+            $groups[''] = $none;
+        }
+        $current = isset($_GET['project']) ? Hastan_Settings::canonical_project(sanitize_text_field(wp_unslash($_GET['project']))) : null;
+        if ($current !== null && !array_key_exists($current, $groups)) {
+            $current = null;
+        }
+        $label = fn (string $name) => $name === '' ? 'Без проекта' : $name;
+        $tab_url = fn (?string $name) => $name === null ? admin_url('admin.php?page=hastan') : add_query_arg('project', rawurlencode($name), admin_url('admin.php?page=hastan'));
+
         echo '<div class="wrap"><h1>Hastan: задачи</h1>';
         self::notice();
         echo '<style>.hastan-task{background:#fff;border:1px solid #dcdcde;border-radius:6px;padding:12px 16px;margin:12px 0;max-width:760px}
 .hastan-task h3{margin:0 0 4px}.hastan-meta{color:#646970;margin-bottom:8px}.hastan-items{margin:0 0 8px}.hastan-items li{margin:2px 0}
-.hastan-done{color:#8c8f94;text-decoration:line-through}.hastan-inline{display:inline}.hastan-overdue{color:#b32d2e;font-weight:600}</style>';
+.hastan-done{color:#8c8f94;text-decoration:line-through}.hastan-inline{display:inline}.hastan-overdue{color:#b32d2e;font-weight:600}
+.hastan-tabs{display:flex;flex-wrap:wrap;gap:6px;margin:14px 0 4px;max-width:792px}.hastan-tabs a{padding:5px 12px;border:1px solid #c3c4c7;border-radius:16px;background:#fff;text-decoration:none;color:#1d2327}
+.hastan-tabs a.on{background:#2271b1;border-color:#2271b1;color:#fff}.hastan-tabs span{opacity:.65;margin-left:4px}
+.hastan-project{margin:26px 0 0;padding-bottom:6px;border-bottom:2px solid #2271b1;max-width:760px;display:flex;justify-content:space-between;align-items:baseline}
+.hastan-project small{color:#646970;font-weight:400;font-size:13px}.hastan-move{float:right;margin-left:8px}.hastan-move select{font-size:12px;min-height:26px;padding:0 22px 0 6px}</style>';
 
-        if (!$tasks) {
-            echo '<p>Открытых задач нет. Напишите помощнику в Telegram или добавьте задачу ниже.</p>';
+        echo '<nav class="hastan-tabs"><a href="' . esc_url($tab_url(null)) . '"' . ($current === null ? ' class="on"' : '') . '>Все<span>' . array_sum(array_map('count', $groups)) . '</span></a>';
+        foreach ($groups as $name => $list) {
+            echo '<a href="' . esc_url($tab_url((string) $name)) . '"' . ($current === (string) $name ? ' class="on"' : '') . '>' . esc_html($label((string) $name)) . '<span>' . count($list) . '</span></a>';
         }
+        echo '</nav>';
+
         $now_utc = gmdate('Y-m-d H:i:s');
-        foreach ($tasks as $task) {
-            $due = Hastan_DB::utc_to_local($task['due_at']);
-            echo '<div class="hastan-task"><h3>' . esc_html($task['title']) . '</h3><div class="hastan-meta">';
-            if ($due) {
-                $class = $task['due_at'] < $now_utc ? ' class="hastan-overdue"' : '';
-                echo '<span' . $class . '>Срок: ' . esc_html($due->format('d.m.Y')) . '</span>';
-            } else {
-                echo 'Без срока';
+        $shown = 0;
+        foreach ($groups as $name => $tasks) {
+            $name = (string) $name;
+            if ($current !== null && $current !== $name) {
+                continue;
             }
-            if ($task['notes']) {
-                echo ' · ' . esc_html($task['notes']);
-            }
-            echo '</div><ul class="hastan-items">';
-            foreach (Hastan_DB::items((int) $task['id']) as $item) {
-                if ($item['status'] === 'cancelled') {
-                    continue;
+            if (!$tasks) {
+                if ($current !== null) {
+                    echo '<p>В этом проекте открытых задач нет.</p>';
                 }
-                $done = $item['status'] === 'done';
-                echo '<li><form class="hastan-inline" method="post" action="' . esc_url($action_url) . '">';
-                wp_nonce_field('hastan_action');
-                echo '<input type="hidden" name="action" value="hastan_action"><input type="hidden" name="op" value="toggle">'
-                    . '<input type="hidden" name="id" value="' . (int) $item['id'] . '">'
-                    . '<label><input type="checkbox" onchange="this.form.submit()"' . checked($done, true, false) . '> '
-                    . '<span' . ($done ? ' class="hastan-done"' : '') . '>' . esc_html($item['title']) . '</span>'
-                    . ((int) $item['optional'] ? ' <em style="color:#888">по желанию</em>' : '') . '</label></form></li>';
+                continue;
             }
-            echo '</ul>';
-            foreach (['done' => 'Готово целиком', 'cancel' => 'Отменить'] as $op => $label) {
-                echo '<form class="hastan-inline" method="post" action="' . esc_url($action_url) . '">';
-                wp_nonce_field('hastan_action');
-                echo '<input type="hidden" name="action" value="hastan_action"><input type="hidden" name="op" value="' . $op . '">'
-                    . '<input type="hidden" name="id" value="' . (int) $task['id'] . '">'
-                    . '<button class="button' . ($op === 'done' ? ' button-primary' : '') . '">' . esc_html($label) . '</button></form> ';
+            $shown += count($tasks);
+            echo '<h2 class="hastan-project">' . esc_html($label($name)) . '<small>' . count($tasks) . ' ' . self::plural(count($tasks), ['задача', 'задачи', 'задач']) . '</small></h2>';
+            foreach ($tasks as $task) {
+                self::board_task($task, $now_utc, $action_url, $current);
             }
-            echo '</div>';
+        }
+        if (!$shown && $current === null) {
+            echo '<p>Открытых задач нет. Напишите помощнику в Telegram или добавьте задачу ниже.</p>';
         }
 
         echo '<h2>Добавить задачу</h2><form method="post" action="' . esc_url($action_url) . '">';
         wp_nonce_field('hastan_action');
         echo '<input type="hidden" name="action" value="hastan_action"><input type="hidden" name="op" value="add">'
+            . '<input type="hidden" name="back_project" value="' . esc_attr((string) $current) . '">'
             . '<p><input type="text" name="title" class="regular-text" placeholder="Например: Пост про открытие сезона" required> '
+            . self::project_select('project', (string) $current) . ' '
             . '<input type="datetime-local" name="due"> <select name="template"><option value="">Без шаблона</option>';
         foreach (Hastan_Templates::all() as $key => $tpl) {
             echo '<option value="' . esc_attr($key) . '">' . esc_html($tpl['name']) . '</option>';
         }
         echo '</select> <button class="button button-primary">Добавить</button></p></form></div>';
+    }
+
+    private static function project_select(string $field, string $selected, string $attrs = ''): string
+    {
+        $html = '<select name="' . esc_attr($field) . '"' . $attrs . '><option value="">Без проекта</option>';
+        $names = Hastan_Settings::projects();
+        if ($selected !== '' && !in_array($selected, $names, true)) {
+            $names[] = $selected;
+        }
+        foreach ($names as $name) {
+            $html .= '<option value="' . esc_attr($name) . '"' . selected($selected, $name, false) . '>' . esc_html($name) . '</option>';
+        }
+        return $html . '</select>';
+    }
+
+    private static function board_task(array $task, string $now_utc, string $action_url, ?string $current): void
+    {
+        $due = Hastan_DB::utc_to_local($task['due_at']);
+        echo '<div class="hastan-task"><form class="hastan-move" method="post" action="' . esc_url($action_url) . '">';
+        wp_nonce_field('hastan_action');
+        echo '<input type="hidden" name="action" value="hastan_action"><input type="hidden" name="op" value="move">'
+            . '<input type="hidden" name="id" value="' . (int) $task['id'] . '">'
+            . '<input type="hidden" name="back_project" value="' . esc_attr((string) $current) . '">'
+            . self::project_select('project', Hastan_Settings::canonical_project($task['project']), ' title="Проект" onchange="this.form.submit()"')
+            . '</form><h3>' . esc_html($task['title']) . '</h3><div class="hastan-meta">';
+        if ($due) {
+            $class = $task['due_at'] < $now_utc ? ' class="hastan-overdue"' : '';
+            echo '<span' . $class . '>Срок: ' . esc_html($due->format('d.m.Y')) . '</span>';
+        } else {
+            echo 'Без срока';
+        }
+        if ($task['notes']) {
+            echo ' · ' . esc_html($task['notes']);
+        }
+        echo '</div><ul class="hastan-items">';
+        foreach (Hastan_DB::items((int) $task['id']) as $item) {
+            if ($item['status'] === 'cancelled') {
+                continue;
+            }
+            $done = $item['status'] === 'done';
+            echo '<li><form class="hastan-inline" method="post" action="' . esc_url($action_url) . '">';
+            wp_nonce_field('hastan_action');
+            echo '<input type="hidden" name="action" value="hastan_action"><input type="hidden" name="op" value="toggle">'
+                . '<input type="hidden" name="id" value="' . (int) $item['id'] . '">'
+                . '<input type="hidden" name="back_project" value="' . esc_attr((string) $current) . '">'
+                . '<label><input type="checkbox" onchange="this.form.submit()"' . checked($done, true, false) . '> '
+                . '<span' . ($done ? ' class="hastan-done"' : '') . '>' . esc_html($item['title']) . '</span>'
+                . ((int) $item['optional'] ? ' <em style="color:#888">по желанию</em>' : '') . '</label></form></li>';
+        }
+        echo '</ul>';
+        foreach (['done' => 'Готово целиком', 'cancel' => 'Отменить'] as $op => $label) {
+            echo '<form class="hastan-inline" method="post" action="' . esc_url($action_url) . '">';
+            wp_nonce_field('hastan_action');
+            echo '<input type="hidden" name="action" value="hastan_action"><input type="hidden" name="op" value="' . $op . '">'
+                . '<input type="hidden" name="id" value="' . (int) $task['id'] . '">'
+                . '<input type="hidden" name="back_project" value="' . esc_attr((string) $current) . '">'
+                . '<button class="button' . ($op === 'done' ? ' button-primary' : '') . '">' . esc_html($label) . '</button></form> ';
+        }
+        echo '</div>';
     }
 
     public static function handle_action(): void
@@ -1451,12 +1521,24 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
                         'title' => $title,
                         'due' => str_replace('T', ' ', sanitize_text_field(wp_unslash($_POST['due'] ?? ''))) ?: null,
                         'template' => sanitize_key($_POST['template'] ?? '') ?: null,
+                        'project' => sanitize_text_field(wp_unslash($_POST['project'] ?? '')),
                         'notes' => null,
                         'extra_items' => [],
                     ];
-                    Hastan_Brain::execute('add_task', $input);
+                    Hastan_Brain::execute('add_task', $input, 'admin');
                 }
                 break;
+            case 'move':
+                $task = Hastan_DB::get_task($id);
+                if ($task && !(int) $task['parent_id']) {
+                    Hastan_Brain::execute('update_task', ['id' => $id, 'project' => sanitize_text_field(wp_unslash($_POST['project'] ?? ''))], 'admin');
+                }
+                break;
+        }
+        $back = sanitize_text_field(wp_unslash($_POST['back_project'] ?? ''));
+        if ($back !== '') {
+            wp_safe_redirect(add_query_arg('project', rawurlencode($back), admin_url('admin.php?page=hastan')));
+            exit;
         }
         self::back('hastan');
     }
@@ -1514,6 +1596,7 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
         self::field('Глубина размышлений', '<select name="effort">' . $effort . '</select>');
         self::field('Утренний план', '<input type="time" name="morning_time" value="' . esc_attr($s['morning_time']) . '">');
         self::field('Вечерняя проверка', '<input type="time" name="evening_time" value="' . esc_attr($s['evening_time']) . '">');
+        self::field('Проекты', '<input type="text" name="projects" value="' . esc_attr($s['projects']) . '" class="regular-text"><p class="description">Через запятую, в этом порядке задачи идут на странице «Задачи». Название — как у проекта в Claude.</p>');
         self::field('Проекты сайта', '<input type="text" name="site_projects" value="' . esc_attr($s['site_projects']) . '" class="regular-text"><p class="description">Через запятую. У задач этих проектов нет сроков; если по ним долго нет работы, утром придёт напоминание.</p>');
         self::field('Напомнить про сайт после, часов', '<input type="number" min="24" max="720" name="site_idle_hours" value="' . (int) $s['site_idle_hours'] . '">');
         self::field('Цель подвижности, ккал', '<input type="number" min="10" max="3000" name="move_goal" value="' . (int) $s['move_goal'] . '"><p class="description">Как в кольце «Подвижность» на iPhone. Используется, если автоматизация отправляет активную энергию.</p>');
@@ -1577,6 +1660,7 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
                     'evening_time' => preg_match('/^\d{2}:\d{2}$/', $_POST['evening_time'] ?? '') ? $_POST['evening_time'] : '20:00',
                     'about' => sanitize_textarea_field(wp_unslash($_POST['about'] ?? '')),
                     'site_projects' => sanitize_text_field(wp_unslash($_POST['site_projects'] ?? '')),
+                    'projects' => sanitize_text_field(wp_unslash($_POST['projects'] ?? '')),
                     'move_goal' => max(10, min(3000, (int) ($_POST['move_goal'] ?? 360))),
                     'steps_goal' => max(100, min(50000, (int) ($_POST['steps_goal'] ?? 8000))),
                     'kcal_limit' => max(500, min(6000, (int) ($_POST['kcal_limit'] ?? 2000))),

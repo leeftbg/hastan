@@ -27,6 +27,7 @@ class Hastan_Settings
             'morning_time' => '10:00',
             'evening_time' => '20:00',
             'kcal_limit' => 2000,
+            'projects' => 'lotus, lotus site, бронирование, phanlibe, bnc',
             'site_projects' => 'lotus site, бронирование',
             'site_idle_hours' => 72,
             'about' => 'Я веду SMM клуба: посты в Instagram и Facebook, новости на сайте, монтаж видео, реклама в Meta.',
@@ -69,6 +70,32 @@ class Hastan_Settings
         if ($changes) {
             self::set($changes);
         }
+    }
+
+    /** All projects in the order the task board shows them; site projects are always included. */
+    public static function projects(): array
+    {
+        $out = [];
+        $names = array_merge(explode(',', (string) self::get('projects')), explode(',', (string) self::get('site_projects')));
+        foreach ($names as $name) {
+            $name = trim($name);
+            if ($name !== '' && !in_array(mb_strtolower($name), array_map('mb_strtolower', $out), true)) {
+                $out[] = $name;
+            }
+        }
+        return $out;
+    }
+
+    /** A project name as spelled in the settings ("BNC" → "bnc"), or as given if it is not listed. */
+    public static function canonical_project(?string $project): string
+    {
+        $project = trim((string) $project);
+        foreach (self::projects() as $name) {
+            if (mb_strtolower($name) === mb_strtolower($project)) {
+                return $name;
+            }
+        }
+        return mb_substr($project, 0, 60);
     }
 
     /** Projects about the website: no deadlines, only a nudge after a long break. */
