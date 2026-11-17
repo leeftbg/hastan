@@ -44,6 +44,7 @@ class Hastan_Drills
   title varchar(255) NOT NULL DEFAULT '',
   status varchar(20) NOT NULL DEFAULT 'pending',
   words text NULL,
+  topic text NULL,
   error varchar(255) NOT NULL DEFAULT '',
   created_at datetime NOT NULL,
   PRIMARY KEY  (id),
@@ -125,14 +126,16 @@ class Hastan_Drills
     /* ---------- making a drill ---------- */
 
     /** Queues a drill for a diary page; Claude writes it in the background. */
-    public static function request(int $goal_id, string $day): int
+    public static function request(int $goal_id, string $day, string $topic = ''): int
     {
         global $wpdb;
         [$date] = self::date_words($day);
+        $topic = trim($topic);
         $wpdb->insert(self::drills_table(), [
             'goal_id' => $goal_id,
             'day' => $day,
-            'title' => $date,
+            'title' => $topic !== '' ? mb_strimwidth(preg_replace('/\s+/u', ' ', $topic), 0, 60, '…') : $date,
+            'topic' => $topic,
             'status' => 'pending',
             'created_at' => gmdate('Y-m-d H:i:s'),
         ]);
@@ -166,13 +169,18 @@ class Hastan_Drills
             @set_time_limit(600);
         }
         $entries = Hastan_Turkish::entries((int) $drill['goal_id']);
+        $known = array_map(fn ($e) => Hastan_Turkish::plain($e['tr']), array_filter(Hastan_Turkish::dictionary($entries), fn ($e) => $e['kind'] === 'word'));
+        $topic = trim((string) ($drill['topic'] ?? ''));
+        if ($topic !== '') {
+            self::save($id, $drill, self::ask_topic($topic, $entries, $known));
+            return;
+        }
         $page = array_values(array_filter($entries, fn ($e) => $e['day'] === $drill['day']));
         if (!$page) {
             self::fail($id, 'На этой странице дневника нет записей.');
             return;
         }
         $lines = array_map(fn ($e) => '- ' . Hastan_Turkish::plain(Hastan_Turkish::as_line($e)), $page);
-        $known = array_map(fn ($e) => Hastan_Turkish::plain($e['tr']), array_filter(Hastan_Turkish::dictionary($entries), fn ($e) => $e['kind'] === 'word'));
 
         $system = 'You write Turkish practice exercises for a Russian-speaking beginner. You are strict about grammar scope: the learner has studied only what is on the given diary page.';
         $prompt = "The learner's diary page (Turkish — Russian, and notes in Russian):\n" . implode("\n", $lines)
@@ -186,6 +194,40 @@ class Hastan_Drills
             . "\n- accept: other answers that are equally correct (word order or synonyms the page allows); empty when there are none. Capital letters and the final full stop do not matter, do not list such variants."
             . "\n- new_words: every Turkish word used in the items that is not in the known list, with its Russian translation, each once."
             . "\n- title: the topic of the page in Russian, two to five words.";
+        self::save($id, $drill, [$system, $prompt]);
+    }
+
+    /** A drill on a topic the learner names: a case, a tense, a set of words. */
+    private static function ask_topic(string $topic, array $entries, array $known): array
+    {
+        $diary = [];
+        foreach (array_reverse($entries) as $e) {
+            $diary[] = '- ' . Hastan_Turkish::plain(Hastan_Turkish::as_line($e));
+        }
+        $diary = implode("\n", $diary);
+        if (mb_strlen($diary) > 15000) {
+            $diary = '…' . mb_substr($diary, -15000);
+        }
+        $system = 'You write Turkish practice exercises for a Russian-speaking beginner. The learner chose the topic; their diary shows what they have studied so far.';
+        $prompt = "The learner asks for exercises on this topic (in their words):\n" . $topic
+            . "\n\nThe learner's diary, oldest first (Turkish — Russian, and notes in Russian):\n" . ($diary !== '' ? $diary : '(empty)')
+            . "\n\nWords the learner already knows: " . ($known ? implode(', ', $known) : 'none yet') . "."
+            . "\n\nWrite exactly " . self::PLAN['ru_tr'] . " items of kind ru_tr, " . self::PLAN['tr_ru'] . " of kind tr_ru and " . self::PLAN['fill'] . " of kind fill, in that order."
+            . "\n\nRules:"
+            . "\n- Every item practises the requested topic. If it is a grammar point (a case, a tense, a suffix, a construction), each sentence uses it; other grammar stays at the level the diary shows, so the learner is not stuck on things they have not met. If it is a set of words, build the sentences around those words, using grammar from the diary."
+            . "\n- Vary the words and sentences; if the topic is grammar, use many different everyday nouns and verbs so the learner gains vocabulary. Do not repeat the diary's own examples."
+            . "\n- Turkish must be correct, with Turkish letters (ç ğ ı İ ö ş ü) and correct vowel harmony and consonant changes. Sentences short and natural."
+            . "\n- ru_tr: prompt is the Russian sentence, answer is the Turkish. tr_ru: prompt is Turkish, answer is a natural Russian translation. fill: prompt is the Turkish sentence with the practised part (an ending, or a word from the set) replaced by ___, answer is only the missing letters or word, hint is the Russian translation of the whole sentence. For ru_tr and tr_ru the hint is empty."
+            . "\n- accept: other answers that are equally correct (word order or synonyms); empty when there are none. Capital letters and the final full stop do not matter, do not list such variants."
+            . "\n- new_words: every Turkish word used in the items that is not in the known list, with its Russian translation, each once."
+            . "\n- title: the topic in Russian, two to five words.";
+        return [$system, $prompt];
+    }
+
+    private static function save(int $id, array $drill, array $ask): void
+    {
+        global $wpdb;
+        [$system, $prompt] = $ask;
         $item = [
             'type' => 'object',
             'properties' => [
