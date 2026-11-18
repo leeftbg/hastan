@@ -63,6 +63,12 @@ class Hastan_Permissions
         $project = mb_substr(trim((string) ($params['project'] ?? '')), 0, 60) ?: 'Claude Code';
         $tool = mb_substr(trim((string) ($params['tool'] ?? '')), 0, 80);
         $input = $params['input'] ?? [];
+
+        // A plain notice (Claude asks on the computer, the bot only lets you know): one line, no buttons.
+        if (!empty($params['notify']) || in_array(mb_strtolower($tool), ['', 'уведомление', 'notification'], true)) {
+            Hastan_Telegram::send('🔐 ' . $project . ' просит разрешение');
+            return new WP_REST_Response(['id' => '', 'status' => 'sent'], 200);
+        }
         $text = '🔐 ' . $project . ' просит разрешение' . "\n\n" . self::describe($tool, is_array($input) ? $input : ['' => (string) $input]);
 
         $id = strtolower(wp_generate_password(12, false));
