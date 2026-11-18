@@ -1578,6 +1578,8 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
         echo '</td></tr>';
         echo '<tr><td>Адрес для шагов</td><td><input type="text" readonly class="large-text code" onclick="this.select()" value="' . esc_attr(Hastan_Steps::url()) . '"><br>'
             . '<span class="description">Для автоматизации в «Командах» на iPhone. Держите в секрете.' . self::movement_today() . '</span></td></tr>';
+        echo '<tr><td>Адрес для разрешений Claude Code</td><td><input type="text" readonly class="large-text code" onclick="this.select()" value="' . esc_attr(Hastan_Permissions::url()) . '"><br>'
+            . '<span class="description">Для хука на компьютере: когда Claude Code просит разрешение, в бот приходит вопрос с кнопками «Разрешить» и «Запретить». Держите в секрете.</span></td></tr>';
         echo '<tr><td>Коннектор для Claude</td><td><input type="text" readonly class="large-text code" onclick="this.select()" value="' . esc_attr(Hastan_MCP::url()) . '"><br>'
             . 'Добавьте этот адрес в Claude: Настройки → Коннекторы → Добавить свой коннектор. Никому его не показывайте: по нему можно читать и менять ваши задачи.</td></tr>';
         echo '<tr><td>Claude API</td><td>' . ($s['anthropic_key'] ? 'ключ сохранён' : '<b>нужен ключ</b>') . '</td></tr>';

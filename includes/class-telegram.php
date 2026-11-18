@@ -247,6 +247,10 @@ class Hastan_Telegram
             $png ? self::send_photo($png) : self::send('Картинку пока не получилось нарисовать.');
             return;
         }
+        if ($action === 'perm') {
+            Hastan_Permissions::answer($cb, $id);
+            return;
+        }
         if ($action === 'habit') {
             self::toggle_habit($cb, $id);
             return;

@@ -18,6 +18,7 @@ class Hastan_Settings
             'link_code' => '',
             'mcp_key' => '',
             'steps_key' => '',
+            'ask_key' => '',
             'steps_goal' => 8000,
             'move_goal' => 360,
             'chat_id' => '',
@@ -63,6 +64,9 @@ class Hastan_Settings
         }
         if ($s['steps_key'] === '') {
             $changes['steps_key'] = wp_generate_password(32, false);
+        }
+        if ($s['ask_key'] === '') {
+            $changes['ask_key'] = wp_generate_password(32, false);
         }
         if ($s['link_code'] === '') {
             $changes['link_code'] = strtolower(wp_generate_password(8, false));
