@@ -4,69 +4,25 @@ if (!defined('ABSPATH')) {
 }
 
 /**
- * Checklist templates: a typical job (post, video, ads) unfolds into its steps.
+ * Checklist templates: a typical job unfolds into its steps. None by default.
  */
 class Hastan_Templates
 {
     const OPTION = 'hastan_templates';
 
+    /** Lotus checklists (event, post, Reels, ads) are no longer kept: they never come back, even from saved settings. */
+    const RETIRED = ['event', 'post', 'video', 'ads'];
+
     public static function defaults(): array
     {
-        return [
-            'event' => [
-                'name' => 'Событие',
-                'items' => [
-                    'Пост',
-                    'Сторис',
-                    'Reels',
-                    'Реклама',
-                    'Событие на сайте',
-                ],
-            ],
-            'post' => [
-                'name' => 'Пост',
-                'items' => [
-                    'Текст поста и хэштеги',
-                    'Картинка для ленты Instagram 1080×1350',
-                    'Сторис 1080×1920',
-                    'Обложка для сайта 1080×1080',
-                    'Публикация в Instagram',
-                    'Публикация в Facebook',
-                    'Новость на сайте',
-                    'Сторис-анонс поста',
-                ],
-            ],
-            'video' => [
-                'name' => 'Видео / Reels',
-                'items' => [
-                    'Отобрать исходники',
-                    'Монтаж 9:16 (1080×1920)',
-                    'Субтитры',
-                    'Обложка',
-                    'Музыка из разрешённой библиотеки',
-                    'Публикация',
-                    'Сторис-анонс',
-                ],
-            ],
-            'ads' => [
-                'name' => 'Реклама Meta',
-                'items' => [
-                    'Цель и бюджет',
-                    'Аудитория',
-                    'Креативы 1:1, 4:5 и 9:16',
-                    'Тексты объявлений',
-                    'Запуск кампании',
-                    'Проверка результатов через 3 дня',
-                    'Отчёт после окончания',
-                ],
-            ],
-        ];
+        return [];
     }
 
     public static function all(): array
     {
         $saved = get_option(self::OPTION);
-        return is_array($saved) && $saved ? $saved + self::defaults() : self::defaults();
+        $all = is_array($saved) && $saved ? $saved + self::defaults() : self::defaults();
+        return array_diff_key($all, array_flip(self::RETIRED));
     }
 
     public static function get(string $key): ?array

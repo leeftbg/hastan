@@ -9,7 +9,7 @@ if (!defined('ABSPATH')) {
  */
 class Hastan_DB
 {
-    const VERSION = '21';
+    const VERSION = '22';
 
     public static function tasks_table(): string
     {
@@ -90,6 +90,14 @@ class Hastan_DB
             foreach (self::open_tasks() as $task) {
                 if (Hastan_Settings::is_site_project($task['project'])) {
                     $wpdb->update($tasks, ['due_at' => null], ['id' => (int) $task['id']]);
+                }
+            }
+        }
+        if ($old && $old < 22) {
+            // Lotus event and post checklists are no longer kept: cancel the open ones.
+            foreach (self::open_tasks() as $task) {
+                if (in_array($task['template'], Hastan_Templates::RETIRED, true)) {
+                    self::close_task((int) $task['id'], 'cancelled');
                 }
             }
         }
