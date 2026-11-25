@@ -9,7 +9,7 @@ if (!defined('ABSPATH')) {
  */
 class Hastan_DB
 {
-    const VERSION = '22';
+    const VERSION = '23';
 
     public static function tasks_table(): string
     {
@@ -100,6 +100,16 @@ class Hastan_DB
                     self::close_task((int) $task['id'], 'cancelled');
                 }
             }
+        }
+        if ($old && $old < 23) {
+            // The user no longer works on lotus and бронирование: drop them from the project lists.
+            $drop = ['lotus', 'бронирование'];
+            $changes = [];
+            foreach (['projects', 'site_projects'] as $key) {
+                $names = array_filter(array_map('trim', explode(',', (string) Hastan_Settings::get($key))), 'strlen');
+                $changes[$key] = implode(', ', array_filter($names, fn ($n) => !in_array(mb_strtolower($n), $drop, true)));
+            }
+            Hastan_Settings::set($changes);
         }
         add_option('hastan_site_activity', time(), '', false);
         update_option('hastan_db_version', self::VERSION, false);
