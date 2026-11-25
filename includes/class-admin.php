@@ -1609,8 +1609,7 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
         self::field('Глубина размышлений', '<select name="effort">' . $effort . '</select>');
         self::field('Утренний план', '<input type="time" name="morning_time" value="' . esc_attr($s['morning_time']) . '">');
         self::field('Проекты', '<input type="text" name="projects" value="' . esc_attr($s['projects']) . '" class="regular-text"><p class="description">Через запятую, в этом порядке задачи идут на странице «Задачи». Название — как у проекта в Claude.</p>');
-        self::field('Проекты сайта', '<input type="text" name="site_projects" value="' . esc_attr($s['site_projects']) . '" class="regular-text"><p class="description">Через запятую. У задач этих проектов нет сроков; если по ним долго нет работы, утром придёт напоминание.</p>');
-        self::field('Напомнить про сайт после, часов', '<input type="number" min="24" max="720" name="site_idle_hours" value="' . (int) $s['site_idle_hours'] . '">');
+        self::field('Проекты сайта', '<input type="text" name="site_projects" value="' . esc_attr($s['site_projects']) . '" class="regular-text"><p class="description">Через запятую. У задач этих проектов нет сроков.</p>');
         self::field('Цель подвижности, ккал', '<input type="number" min="10" max="3000" name="move_goal" value="' . (int) $s['move_goal'] . '"><p class="description">Как в кольце «Подвижность» на iPhone. Используется, если автоматизация отправляет активную энергию.</p>');
         self::field('Норма шагов в день', '<input type="number" min="100" max="50000" name="steps_goal" value="' . (int) $s['steps_goal'] . '">');
         self::field('Норма калорий в день', '<input type="number" min="500" max="6000" name="kcal_limit" value="' . (int) $s['kcal_limit'] . '">');
@@ -1622,7 +1621,7 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
         submit_button('Сохранить');
         echo '</form>';
 
-        echo '<h2>Расписание на сервере</h2><p>Чтобы утреннее и вечернее сообщения приходили, даже когда на сайт никто не заходит, добавьте в FastPanel задание cron с запуском <b>раз в час</b>:</p>'
+        echo '<h2>Расписание на сервере</h2><p>Чтобы утреннее сообщение приходило, даже когда на сайт никто не заходит, добавьте в FastPanel задание cron с запуском <b>раз в час</b>:</p>'
             . '<p><code>wget -q -O /dev/null ' . esc_html($cron_url) . '</code></p></div>';
     }
 
@@ -1671,7 +1670,6 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
                     'move_goal' => max(10, min(3000, (int) ($_POST['move_goal'] ?? 360))),
                     'steps_goal' => max(100, min(50000, (int) ($_POST['steps_goal'] ?? 8000))),
                     'kcal_limit' => max(500, min(6000, (int) ($_POST['kcal_limit'] ?? 2000))),
-                    'site_idle_hours' => max(24, min(720, (int) ($_POST['site_idle_hours'] ?? 72))),
                 ];
                 foreach (['telegram_token', 'anthropic_key'] as $secret) {
                     $value = trim(sanitize_text_field(wp_unslash($_POST[$secret] ?? '')));

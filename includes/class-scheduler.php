@@ -66,7 +66,7 @@ class Hastan_Scheduler
     }
 
     /**
-     * 10:00: a nudge when the site has been idle too long and missed habits.
+     * 10:00: missed habits.
      * Nothing is sent when there is nothing to say.
      */
     public static function morning(DateTimeImmutable $now, bool $force = false): void
@@ -75,10 +75,6 @@ class Hastan_Scheduler
             return;
         }
         $out = [];
-        $idle = time() - (int) get_option('hastan_site_activity', time());
-        if ($idle >= (int) Hastan_Settings::get('site_idle_hours') * HOUR_IN_SECONDS) {
-            $out[] = '— Сайтом не занимались ' . floor($idle / DAY_IN_SECONDS) . ' дн.';
-        }
         Hastan_Food::close_day($now->modify('-1 day')->format('Y-m-d'));
         $lapses = Hastan_Habits::lapses($now);
         if ($lapses) {
