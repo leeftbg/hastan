@@ -9,7 +9,7 @@ if (!defined('ABSPATH')) {
  */
 class Hastan_DB
 {
-    const VERSION = '23';
+    const VERSION = '24';
 
     public static function tasks_table(): string
     {
@@ -49,6 +49,7 @@ class Hastan_DB
   optional tinyint(1) NOT NULL DEFAULT 0,
   due_at datetime NULL,
   reminded_at datetime NULL,
+  remind_on varchar(255) NOT NULL DEFAULT '',
   done_at datetime NULL,
   source varchar(20) NOT NULL DEFAULT '',
   created_at datetime NOT NULL,
@@ -172,6 +173,57 @@ class Hastan_DB
             'SELECT * FROM ' . self::tasks_table() . " WHERE parent_id = 0 AND status = 'open' ORDER BY due_at IS NULL, due_at, id",
             ARRAY_A
         );
+    }
+
+    /**
+     * Days for the 10:00 reminder, as given by the user: dates YYYY-MM-DD.
+     * Returns the cleaned, sorted list ready for the remind_on column.
+     */
+    public static function remind_dates(array $dates): string
+    {
+        $out = [];
+        foreach ($dates as $date) {
+            $date = trim((string) $date);
+            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) && checkdate((int) substr($date, 5, 2), (int) substr($date, 8, 2), (int) substr($date, 0, 4))) {
+                $out[$date] = true;
+            }
+        }
+        $out = array_keys($out);
+        sort($out);
+        return implode(',', array_slice($out, 0, 20));
+    }
+
+    /** Open top-level tasks to show at 10:00 on $today: asked for that day, or (if enabled) due that day. */
+    public static function morning_tasks(DateTimeImmutable $today): array
+    {
+        $day = $today->format('Y-m-d');
+        $out = [];
+        foreach (self::open_tasks() as $task) {
+            $asked = in_array($day, array_filter(explode(',', (string) ($task['remind_on'] ?? ''))), true);
+            $due = self::utc_to_local($task['due_at']);
+            $due_today = $due && $due->format('Y-m-d') === $day
+                && Hastan_Settings::get('morning_due')
+                && !Hastan_Settings::is_site_project($task['project']);
+            if ($asked || $due_today) {
+                $out[] = $task;
+            }
+        }
+        return $out;
+    }
+
+    /** Forgets reminder days that are already past. */
+    public static function drop_past_reminders(DateTimeImmutable $today): void
+    {
+        global $wpdb;
+        $day = $today->format('Y-m-d');
+        $rows = $wpdb->get_results('SELECT id, remind_on FROM ' . self::tasks_table() . " WHERE remind_on <> ''", ARRAY_A);
+        foreach ($rows as $row) {
+            $left = array_filter(explode(',', $row['remind_on']), fn ($d) => $d > $day);
+            $left = implode(',', $left);
+            if ($left !== $row['remind_on']) {
+                $wpdb->update(self::tasks_table(), ['remind_on' => $left], ['id' => (int) $row['id']]);
+            }
+        }
     }
 
     /** Top-level tasks finished within the last $hours hours. */
