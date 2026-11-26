@@ -389,6 +389,12 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
             return;
         }
         if ($goal && $goal['kind'] === 'exam') {
+            Hastan_Exam::load_files();
+            $q = !empty($_GET['q']) ? Hastan_Goals::get_step((int) $_GET['q']) : null;
+            if ($q && (int) $q['goal_id'] === (int) $goal['id'] && (int) $q['parent_id']) {
+                self::exam_question_page($goal, $q);
+                return;
+            }
             self::exam_page($goal);
             return;
         }
@@ -679,6 +685,8 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
 .hx-q details{margin:6px 0 0 66px}.hx-q summary{cursor:pointer;color:#2271b1;font-size:12px}
 .hx-q ol{margin:6px 0 0 18px;font-size:12.5px;line-height:1.5;color:#3c434a}.hx-q ol li{margin-bottom:3px}
 .hx-hint{color:var(--muted);font-size:12px;margin:14px 0 0}
+.hx-open{color:var(--ink);text-decoration:none;border-bottom:1px solid #c9bfa9}.hx-open:hover{color:#2271b1;border-color:#2271b1}
+.hx-mat{display:inline-block;font-size:10.5px;letter-spacing:.03em;background:#e4efe8;color:var(--done);border-radius:10px;padding:0 7px;vertical-align:1px}
 @media (max-width:600px){.hx-grid{grid-template-columns:1fr}.hx-hero{padding:22px}.hx-q details{margin-left:0}}
 </style>';
         $r = 52;
@@ -706,6 +714,7 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
         }
         echo '</div>';
 
+        $material = Hastan_Exam::index();
         echo '<div class="hx-grid">';
         foreach ($tree as $topic) {
             $qs = $topic['children'];
@@ -723,7 +732,8 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
                     $dots .= '<b' . ($reps >= $i ? ' class="on"' : '') . '></b>';
                 }
                 echo self::goal_form('step_cycle', ['step' => (int) $q['id'], 'anchor' => 't' . $topic['code']], '<button class="hg-dot" title="' . esc_attr($states[min(3, $state)]) . ' — натиснете за следващ етап">' . ($state === 3 ? '✓' : '') . '</button>', '', '')
-                    . '<span class="hx-code">' . esc_html($q['code']) . '</span><span class="t">' . esc_html($q['title'])
+                    . '<span class="hx-code">' . esc_html($q['code']) . '</span><span class="t">'
+                    . (isset($material[(int) $q['id']]) ? '<a class="hx-open" href="' . esc_url(self::goal_url($id) . '&q=' . (int) $q['id']) . '">' . esc_html($q['title']) . '</a> <span class="hx-mat">материал</span>' : esc_html($q['title']))
                     . ($state ? ' <span class="hx-stage">· ' . esc_html($states[min(3, $state)]) . '</span>' : '') . '</span>'
                     . self::goal_form('step_repeat', ['step' => (int) $q['id'], 'anchor' => 't' . $topic['code']], '<button title="Повторен ' . $reps . ' пъти. Натиснете, когато повторите">↻ ' . $dots . '</button>', '', 'class="hx-rep r' . min(3, $reps) . '"')
                     . '</div>';
@@ -740,6 +750,123 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
         }
         echo '</div><p class="hx-hint">Кръгчето: не е започнат → конспект → пищов → готов. ↻ — колко пъти сте повторили въпроса (до 3), не влияе на процента. На бота: «конспект 7.2», «шпаргалка 7.1», «повторила 1.1».</p>';
         echo self::goal_footer($goal, ['diary' => 'Дневник', 'write' => 'Запиши', 'what' => 'Какво направих', 'empty' => 'Още няма записи.']);
+        echo '</div>';
+    }
+
+    /** One exam question to study: Russian explanation, why it matters, the Bulgarian answer, terms and self-check. */
+    private static function exam_question_page(array $goal, array $q): void
+    {
+        $id = (int) $goal['id'];
+        $m = Hastan_Exam::get((int) $q['id']) ?? [];
+        $topic = Hastan_Goals::get_step((int) $q['parent_id']);
+        $leaves = array_merge([], ...array_map(fn ($t) => $t['children'], Hastan_Goals::tree($id)));
+        $codes = array_column($leaves, 'code');
+        $at = array_search($q['code'], $codes, true);
+        $prev = $at !== false && $at > 0 ? $leaves[$at - 1] : null;
+        $next = $at !== false && $at < count($leaves) - 1 ? $leaves[$at + 1] : null;
+        $url = fn ($step) => self::goal_url($id) . '&q=' . (int) $step['id'];
+        $states = ['не начат', 'конспект', 'шпаргалка', 'готов'];
+        $state = min(3, (int) $q['state']);
+
+        $tabs = [];
+        if (!empty($m['ru'])) {
+            $tabs['ru'] = ['Разбор', 'по-русски', Hastan_Exam::markdown((string) $m['ru']) . (!empty($m['sources']) ? '<div class="hq-sources"><h4>Источники</h4>' . Hastan_Exam::markdown((string) $m['sources']) . '</div>' : '')];
+        }
+        if (!empty($m['why'])) {
+            $tabs['why'] = ['Зачем мне', 'польза', Hastan_Exam::markdown((string) $m['why'])];
+        }
+        if (!empty($m['bg'])) {
+            $tabs['bg'] = ['Конспект', 'на български', '<div lang="bg">' . Hastan_Exam::markdown((string) $m['bg']) . '</div>'];
+        }
+        if (!empty($m['terms'])) {
+            $cards = '';
+            foreach (Hastan_Exam::terms((string) $m['terms']) as [$bg, $ru]) {
+                $cards .= '<button type="button" class="hq-term"><b lang="bg">' . esc_html($bg) . '</b><span>' . esc_html($ru) . '</span></button>';
+            }
+            $tabs['terms'] = ['Термины', 'словарик', '<p class="hq-note">Нажмите «Проверить себя»: перевод спрячется, нажатие на карточку его открывает.</p>'
+                . '<p><button type="button" class="button" id="hq-hide">Проверить себя</button></p><div class="hq-terms" id="hq-terms">' . $cards . '</div>'];
+        }
+        if (!empty($m['quiz'])) {
+            $items = '';
+            foreach (Hastan_Exam::quiz((string) $m['quiz']) as $i => [$question, $answer]) {
+                $items .= '<details class="hq-quiz"><summary><span class="n">' . ($i + 1) . '</span><span class="q">' . esc_html($question) . '</span><span class="show">ответ</span></summary>'
+                    . '<div class="a">' . Hastan_Exam::markdown($answer) . '</div></details>';
+            }
+            $tabs['quiz'] = ['Самопроверка', 'вопросы', '<p class="hq-note">Сначала ответьте вслух своими словами, потом откройте ответ.</p>' . $items];
+        }
+
+        echo '<div class="wrap hq">';
+        self::notice();
+        echo '<style>
+.hq{--ink:#1f2a37;--muted:#7a7466;--paper:#fbf8f2;--line:#e6dfd0;--accent:#2f7d5b;--gold:#c08a2e;max-width:880px;margin-right:auto}
+.hq a.hq-back{display:inline-block;margin:6px 0 10px;color:var(--muted);text-decoration:none;font-size:13px}.hq a.hq-back:hover{color:#2271b1}
+.hq-hero{background:linear-gradient(135deg,#1f2a37,#2d3e52);color:#fff;border-radius:18px;padding:26px 30px 22px;position:relative;overflow:hidden}
+.hq-hero:after{content:"";position:absolute;right:-60px;top:-60px;width:220px;height:220px;border-radius:50%;background:rgba(255,255,255,.04)}
+.hq-topic{font-size:12px;letter-spacing:.05em;text-transform:uppercase;opacity:.7}
+.hq-hero .code{font-family:Georgia,"Times New Roman",serif;font-size:44px;line-height:1;color:#e9c98a;margin:12px 0 4px;font-weight:600}
+.hq-hero h1{color:#fff;font-family:Georgia,"Times New Roman",serif;font-size:26px;line-height:1.3;margin:0;padding:0;font-weight:600}
+.hq-chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.hq-chips span{background:rgba(255,255,255,.12);border-radius:20px;padding:3px 11px;font-size:12px}
+.hq-chips .lvl-deep{background:#5fc293;color:#123}.hq-chips .lvl-normal{background:#e9c98a;color:#321}.hq-chips .lvl-min{background:rgba(255,255,255,.22)}
+.hq-nav{display:flex;justify-content:space-between;gap:12px;margin:14px 0 0;font-size:13px}.hq-nav a{color:#cfd8e3;text-decoration:none}.hq-nav a:hover{color:#fff}
+.hq-tabs{position:sticky;top:32px;z-index:5;display:flex;gap:6px;overflow-x:auto;background:#f0f0f1;padding:12px 0 10px;margin-top:8px;scrollbar-width:none}
+.hq-tabs button{flex:none;border:1px solid var(--line);background:#fff;border-radius:12px;padding:8px 14px;cursor:pointer;text-align:left;color:var(--ink);font-size:14px;font-weight:600;line-height:1.2}
+.hq-tabs button small{display:block;font-weight:400;font-size:11px;color:var(--muted);margin-top:2px}
+.hq-tabs button.on{background:var(--ink);border-color:var(--ink);color:#fff}.hq-tabs button.on small{color:#cfd8e3}
+.hq-pane{background:#fff;border:1px solid var(--line);border-radius:16px;padding:8px 34px 30px;margin-bottom:22px;font-size:16px;line-height:1.7;color:#2b2f33}
+.js .hq-pane{display:none}.js .hq-pane.on{display:block}
+.hq-pane h2{font-family:Georgia,"Times New Roman",serif;font-size:23px;margin:28px 0 8px;color:var(--ink);line-height:1.3}
+.hq-pane h3{font-size:18px;margin:26px 0 6px;color:var(--ink);padding-top:14px;border-top:1px solid var(--line)}
+.hq-pane h2+h3,.hq-pane>h3:first-child,.hq-pane>div>h3:first-child{border-top:0;padding-top:0}
+.hq-pane h4{font-size:14px;margin:18px 0 4px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+.hq-pane p{margin:10px 0;font-size:16px;line-height:1.7}.hq-pane ul,.hq-pane ol{margin:8px 0 12px 22px}.hq-pane li{margin:5px 0;font-size:16px;line-height:1.6}
+.hq-pane ul{list-style:disc}.hq-pane ul ul{list-style:circle;margin-top:4px}
+.hq-pane strong{color:var(--ink);background:linear-gradient(transparent 62%,#f6e7c4 62%)}
+.hq-callout{background:var(--paper);border-left:4px solid var(--gold);border-radius:0 12px 12px 0;padding:4px 18px;margin:16px 0}
+.hq-callout p{margin:8px 0}
+.hq-table{overflow-x:auto;margin:14px 0}.hq-table table{border-collapse:collapse;width:100%;font-size:14.5px}
+.hq-table th,.hq-table td{border-bottom:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top;line-height:1.5}.hq-table th{background:var(--paper);font-weight:600;color:var(--ink)}
+.hq-pane hr{border:0;border-top:1px solid var(--line);margin:24px 0}
+.hq-sources{margin-top:28px;padding-top:6px;border-top:1px dashed var(--line);font-size:13.5px}.hq-sources li,.hq-sources p{font-size:13.5px;line-height:1.5;color:#555}
+.hq-note{color:var(--muted);font-size:13.5px !important}
+.hq-terms{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;margin-top:8px}
+.hq-term{display:flex;flex-direction:column;gap:3px;text-align:left;border:1px solid var(--line);border-radius:12px;background:var(--paper);padding:11px 14px;cursor:pointer;font:inherit;line-height:1.4}
+.hq-term b{color:var(--ink);font-size:15px}.hq-term span{color:#555;font-size:14px}
+.hq-terms.hide .hq-term span{visibility:hidden}.hq-terms.hide .hq-term.open span{visibility:visible}.hq-terms.hide .hq-term.open{border-color:var(--accent)}
+.hq-quiz{border:1px solid var(--line);border-radius:12px;margin:10px 0;background:var(--paper)}
+.hq-quiz summary{display:flex;gap:12px;align-items:flex-start;padding:12px 16px;cursor:pointer;list-style:none;font-size:15.5px;line-height:1.5;color:var(--ink)}
+.hq-quiz summary::-webkit-details-marker{display:none}
+.hq-quiz .n{flex:none;width:26px;height:26px;border-radius:50%;background:#fff;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--muted);font-weight:600}
+.hq-quiz .q{flex:1}.hq-quiz .show{flex:none;font-size:12px;color:#2271b1;margin-top:3px}.hq-quiz[open] .show{color:var(--muted)}
+.hq-quiz .a{padding:0 18px 8px 54px;background:#fff;border-top:1px solid var(--line);border-radius:0 0 12px 12px}
+.hq-empty{background:#fff;border:1px dashed var(--line);border-radius:16px;padding:30px;text-align:center;color:var(--muted)}
+@media (max-width:600px){.hq-hero{padding:20px}.hq-hero h1{font-size:21px}.hq-hero .code{font-size:36px}.hq-pane{padding:4px 18px 22px;font-size:15.5px}.hq-tabs{top:46px}.hq-quiz .a{padding-left:18px}}
+</style>';
+        echo '<a class="hq-back" href="' . esc_url(self::goal_url($id, 't' . ($topic['code'] ?? ''))) . '">← ' . esc_html($goal['title']) . '</a>';
+        echo '<div class="hq-hero">' . ($topic ? '<div class="hq-topic">Тема ' . esc_html($topic['code'] . ' · ' . $topic['title']) . '</div>' : '')
+            . '<div class="code">' . esc_html($q['code']) . '</div><h1 lang="bg">' . esc_html($q['title']) . '</h1><div class="hq-chips">'
+            . (!empty($m['level']) ? '<span class="lvl-' . esc_attr($m['level']) . '">учим ' . esc_html(Hastan_Exam::LEVELS[$m['level']] ?? '') . '</span>' : '')
+            . '<span>' . esc_html($states[$state]) . '</span>' . ((int) $q['repeats'] ? '<span>↻ ' . (int) $q['repeats'] . '</span>' : '') . '</div>'
+            . '<div class="hq-nav"><span>' . ($prev ? '<a href="' . esc_url($url($prev)) . '">← ' . esc_html($prev['code']) . '</a>' : '') . '</span>'
+            . '<span>' . ($next ? '<a href="' . esc_url($url($next)) . '">' . esc_html($next['code']) . ' →</a>' : '') . '</span></div></div>';
+        if (!$tabs) {
+            echo '<div class="hq-empty" style="margin-top:18px">К этому вопросу материала пока нет. Попросите Claude: «сделай материал к ' . esc_html($q['code']) . '».</div></div>';
+            return;
+        }
+        echo '<div class="hq-tabs" role="tablist">';
+        foreach ($tabs as $key => [$label, $sub]) {
+            echo '<button type="button" data-tab="' . esc_attr($key) . '">' . esc_html($label) . '<small>' . esc_html($sub) . '</small></button>';
+        }
+        echo '</div>';
+        foreach ($tabs as $key => [, , $html]) {
+            echo '<section class="hq-pane" id="hq-' . esc_attr($key) . '">' . $html . '</section>';
+        }
+        echo '<script>(function(){var w=document.querySelector(".hq");w.classList.add("js");var b=w.querySelectorAll(".hq-tabs button");'
+            . 'function go(k,scroll){b.forEach(function(x){x.classList.toggle("on",x.dataset.tab===k);});w.querySelectorAll(".hq-pane").forEach(function(p){p.classList.toggle("on",p.id==="hq-"+k);});'
+            . 'try{history.replaceState(null,"","#"+k);}catch(e){}if(scroll){var t=w.querySelector(".hq-tabs");window.scrollTo({top:t.getBoundingClientRect().top+window.scrollY-40,behavior:"smooth"});}}'
+            . 'b.forEach(function(x){x.addEventListener("click",function(){go(x.dataset.tab,true);});});'
+            . 'var h=location.hash.slice(1);go(document.getElementById("hq-"+h)?h:b[0].dataset.tab,false);'
+            . 'var t=document.getElementById("hq-terms"),hb=document.getElementById("hq-hide");if(t&&hb){hb.addEventListener("click",function(){var on=t.classList.toggle("hide");hb.textContent=on?"Показать все переводы":"Проверить себя";t.querySelectorAll(".open").forEach(function(c){c.classList.remove("open");});});'
+            . 't.addEventListener("click",function(e){var c=e.target.closest(".hq-term");if(c&&t.classList.contains("hide"))c.classList.toggle("open");});}})();</script>';
         echo '</div>';
     }
 

@@ -140,6 +140,7 @@ class Hastan_MCP
             }
             $tools[] = ['name' => $tool['name'], 'description' => $description, 'inputSchema' => $tool['inputSchema']];
         }
+        $tools[] = Hastan_Exam::tool_schema(); // Writing study material: only from Claude chats, not the bot.
         return $tools;
     }
 }
