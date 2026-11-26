@@ -698,6 +698,8 @@ PROMPT;
 
             case 'turkish_diary':
                 return Hastan_Turkish::tool($input);
+            case 'exam_material':
+                return Hastan_Exam::tool($input);
 
             case 'add_items':
                 $task = Hastan_DB::get_task((int) ($input['task_id'] ?? 0));
