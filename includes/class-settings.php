@@ -26,6 +26,7 @@ class Hastan_Settings
             'model' => 'claude-opus-5-5',
             'effort' => 'low',
             'morning_time' => '10:00',
+            'morning_due' => 1,
             'evening_time' => '20:00',
             'kcal_limit' => 2000,
             'projects' => 'lotus site, phanlibe, bnc',

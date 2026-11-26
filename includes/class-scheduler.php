@@ -66,7 +66,8 @@ class Hastan_Scheduler
     }
 
     /**
-     * 10:00: missed habits.
+     * 10:00: tasks the user asked to be reminded of today, tasks due today
+     * (not lotus site), and missed habits. Overdue tasks are not repeated.
      * Nothing is sent when there is nothing to say.
      */
     public static function morning(DateTimeImmutable $now, bool $force = false): void
@@ -76,6 +77,11 @@ class Hastan_Scheduler
         }
         $out = [];
         Hastan_Food::close_day($now->modify('-1 day')->format('Y-m-d'));
+        foreach (Hastan_DB::morning_tasks($now) as $task) {
+            $project = $task['project'] !== '' ? $task['project'] . ': ' : '';
+            $out[] = '— ' . $project . $task['title'];
+        }
+        Hastan_DB::drop_past_reminders($now);
         $lapses = Hastan_Habits::lapses($now);
         if ($lapses) {
             $out[] = '— Пропущено: ' . implode(', ', $lapses);

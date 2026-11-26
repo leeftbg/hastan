@@ -1478,6 +1478,10 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
         } else {
             echo 'Без срока';
         }
+        $remind = array_filter(explode(',', (string) ($task['remind_on'] ?? '')));
+        if ($remind) {
+            echo ' · Напомнить: ' . esc_html(implode(', ', array_map(fn ($d) => substr($d, 8, 2) . '.' . substr($d, 5, 2), $remind)));
+        }
         if ($task['notes']) {
             echo ' · ' . esc_html($task['notes']);
         }
@@ -1607,7 +1611,9 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
             $effort .= '<option value="' . $k . '"' . selected($s['effort'], $k, false) . '>' . esc_html($label) . '</option>';
         }
         self::field('Глубина размышлений', '<select name="effort">' . $effort . '</select>');
-        self::field('Утренний план', '<input type="time" name="morning_time" value="' . esc_attr($s['morning_time']) . '">');
+        self::field('Утренний план', '<input type="time" name="morning_time" value="' . esc_attr($s['morning_time']) . '">'
+            . '<p><label><input type="checkbox" name="morning_due" value="1"' . checked((bool) $s['morning_due'], true, false) . '> Напоминать о задачах в день срока (кроме проектов сайта)</label></p>'
+            . '<p class="description">О других днях — когда попросите бота: «напомни завтра и послезавтра».</p>');
         self::field('Проекты', '<input type="text" name="projects" value="' . esc_attr($s['projects']) . '" class="regular-text"><p class="description">Через запятую, в этом порядке задачи идут на странице «Задачи». Название — как у проекта в Claude.</p>');
         self::field('Проекты сайта', '<input type="text" name="site_projects" value="' . esc_attr($s['site_projects']) . '" class="regular-text"><p class="description">Через запятую. У задач этих проектов нет сроков.</p>');
         self::field('Цель подвижности, ккал', '<input type="number" min="10" max="3000" name="move_goal" value="' . (int) $s['move_goal'] . '"><p class="description">Как в кольце «Подвижность» на iPhone. Используется, если автоматизация отправляет активную энергию.</p>');
@@ -1664,6 +1670,7 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
                     'model' => sanitize_text_field(wp_unslash($_POST['model'] ?? '')) ?: 'claude-opus-5-5',
                     'effort' => in_array($_POST['effort'] ?? '', ['low', 'medium', 'high'], true) ? $_POST['effort'] : 'low',
                     'morning_time' => preg_match('/^\d{2}:\d{2}$/', $_POST['morning_time'] ?? '') ? $_POST['morning_time'] : '10:00',
+                    'morning_due' => empty($_POST['morning_due']) ? 0 : 1,
                     'about' => sanitize_textarea_field(wp_unslash($_POST['about'] ?? '')),
                     'site_projects' => sanitize_text_field(wp_unslash($_POST['site_projects'] ?? '')),
                     'projects' => sanitize_text_field(wp_unslash($_POST['projects'] ?? '')),
