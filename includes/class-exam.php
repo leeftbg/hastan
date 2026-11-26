@@ -12,7 +12,7 @@ if (!defined('ABSPATH')) {
  */
 class Hastan_Exam
 {
-    const FIELDS = ['ru', 'why', 'bg', 'terms', 'quiz', 'sources'];
+    const FIELDS = ['ru', 'why', 'bg', 'terms', 'quiz', 'sources', 'notes'];
     const LEVELS = ['deep' => 'глубоко', 'normal' => 'нормально', 'min' => 'на сдачу'];
 
     public static function table(): string
@@ -33,6 +33,7 @@ class Hastan_Exam
   terms text NULL,
   quiz text NULL,
   sources text NULL,
+  notes longtext NULL,
   updated_at datetime NOT NULL,
   PRIMARY KEY  (step_id)
 ) $charset;");
@@ -138,6 +139,7 @@ class Hastan_Exam
                 . 'Порядок: сначала разбор по-русски до полного понимания, потом короткий болгарский конспект для заучивания. '
                 . 'Текст в Markdown: ## и ### заголовки, **жирный**, списки «- » и «1. », «> » выноска, таблицы «| a | b |». '
                 . 'terms — строки «болгарский термин — русский перевод». quiz — блоки «В: вопрос» и «О: ответ», через пустую строку. '
+                . 'Сноски: в тексте {{слово}} или {{слово|ключ}} делает слово нажимаемым; в notes — разделы «### ключ» с пояснением (читать для понимания, не учить). '
                 . 'Пустое поле не меняется, «-» очищает. Без code — вернёт список вопросов и у каких есть материал.',
             'inputSchema' => [
                 'type' => 'object',
@@ -150,6 +152,7 @@ class Hastan_Exam
                     'terms' => ['type' => 'string', 'description' => 'Словарик: «термин — перевод» по строке'],
                     'quiz' => ['type' => 'string', 'description' => 'Самопроверка: «В: …» и «О: …»'],
                     'sources' => ['type' => 'string', 'description' => 'Источники, Markdown-список'],
+                    'notes' => ['type' => 'string', 'description' => 'Сноски: разделы «### ключ» и абзацы пояснения, Markdown'],
                     'read' => ['type' => 'boolean', 'description' => 'true — вернуть текущий материал вопроса'],
                 ],
             ],
@@ -191,6 +194,7 @@ class Hastan_Exam
     private static function inline(string $text): string
     {
         $html = esc_html($text);
+        $html = preg_replace_callback('/\{\{([^{}|]+?)(?:\|([^{}]+?))?\}\}/u', fn ($m) => '<button type="button" class="hq-fn" data-fn="' . esc_attr(self::note_key(html_entity_decode($m[2] ?? '' ?: $m[1]))) . '">' . $m[1] . '</button>', $html);
         $html = preg_replace('/\*\*(.+?)\*\*/u', '<strong>$1</strong>', $html);
         $html = preg_replace('/(?<![\w*])_(.+?)_(?!\w)/u', '<em>$1</em>', $html);
         $html = preg_replace_callback('/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/u', fn ($m) => '<a href="' . esc_url(html_entity_decode($m[2])) . '" target="_blank" rel="noopener">' . $m[1] . '</a>', $html);
@@ -285,6 +289,23 @@ class Hastan_Exam
             }
         }
         $flush();
+        return $out;
+    }
+
+    public static function note_key(string $key): string
+    {
+        return mb_strtolower(trim(preg_replace('/\s+/u', ' ', $key)));
+    }
+
+    /** Footnotes: «### key» sections, each rendered. */
+    public static function notes(string $text): array
+    {
+        $out = [];
+        $parts = preg_split('/^###\s+(.+)$/mu', trim($text), -1, PREG_SPLIT_DELIM_CAPTURE);
+        for ($i = 1; $i + 1 < count($parts); $i += 2) {
+            $title = trim($parts[$i]);
+            $out[self::note_key($title)] = [mb_strtoupper(mb_substr($title, 0, 1)) . mb_substr($title, 1), self::markdown($parts[$i + 1])];
+        }
         return $out;
     }
 

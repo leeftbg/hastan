@@ -838,8 +838,15 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
 .hq-quiz .n{flex:none;width:26px;height:26px;border-radius:50%;background:#fff;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--muted);font-weight:600}
 .hq-quiz .q{flex:1}.hq-quiz .show{flex:none;font-size:12px;color:#2271b1;margin-top:3px}.hq-quiz[open] .show{color:var(--muted)}
 .hq-quiz .a{padding:0 18px 8px 54px;background:#fff;border-top:1px solid var(--line);border-radius:0 0 12px 12px}
+.hq-fn{all:unset;cursor:pointer;color:inherit;font:inherit;border-bottom:2px dotted #3b7bbf;padding:0 1px;border-radius:3px}.hq-fn:hover,.hq-fn:focus-visible{background:#e6f0fa}
+.hq-fn:after{content:"ⓘ";font-size:.62em;vertical-align:super;color:#3b7bbf;margin-left:1px;font-weight:600}.hq-fn.none{border-bottom:0;cursor:text}.hq-fn.none:after{content:none}
+.hq-pop{position:fixed;inset:0;z-index:100000;background:rgba(20,26,34,.45);display:flex;align-items:center;justify-content:center;padding:20px}.hq-pop[hidden]{display:none}
+.hq-pop-card{position:relative;background:#fff;border-radius:16px;max-width:600px;width:100%;max-height:80vh;overflow:auto;padding:22px 28px 20px;box-shadow:0 20px 60px rgba(0,0,0,.25);font-size:15.5px;line-height:1.65;color:#2b2f33}
+.hq-pop-card h3{font-family:Georgia,"Times New Roman",serif;font-size:21px;margin:4px 30px 8px 0;color:var(--ink)}.hq-pop-card p,.hq-pop-card li{font-size:15.5px;line-height:1.65}.hq-pop-card ul,.hq-pop-card ol{margin:6px 0 10px 20px}.hq-pop-card ul{list-style:disc}
+.hq-pop-tag{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:#3b7bbf}
+.hq-pop-x{position:absolute;right:12px;top:10px;border:0;background:#f0f0f1;border-radius:50%;width:32px;height:32px;font-size:20px;line-height:30px;cursor:pointer;color:#555}
 .hq-empty{background:#fff;border:1px dashed var(--line);border-radius:16px;padding:30px;text-align:center;color:var(--muted)}
-@media (max-width:600px){.hq-hero{padding:20px}.hq-hero h1{font-size:21px}.hq-hero .code{font-size:36px}.hq-pane{padding:4px 18px 22px;font-size:15.5px}.hq-tabs{top:46px}.hq-quiz .a{padding-left:18px}}
+@media (max-width:600px){.hq-pop{align-items:flex-end;padding:0}.hq-pop-card{border-radius:18px 18px 0 0;max-height:85vh;padding:20px 20px 28px}.hq-hero{padding:20px}.hq-hero h1{font-size:21px}.hq-hero .code{font-size:36px}.hq-pane{padding:4px 18px 22px;font-size:15.5px}.hq-tabs{top:46px}.hq-quiz .a{padding-left:18px}}
 </style>';
         echo '<a class="hq-back" href="' . esc_url(self::goal_url($id, 't' . ($topic['code'] ?? ''))) . '">← ' . esc_html($goal['title']) . '</a>';
         echo '<div class="hq-hero">' . ($topic ? '<div class="hq-topic">Тема ' . esc_html($topic['code'] . ' · ' . $topic['title']) . '</div>' : '')
@@ -860,13 +867,26 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
         foreach ($tabs as $key => [, , $html]) {
             echo '<section class="hq-pane" id="hq-' . esc_attr($key) . '">' . $html . '</section>';
         }
+        $notes = !empty($m['notes']) ? Hastan_Exam::notes((string) $m['notes']) : [];
+        echo '<div hidden id="hq-notes">';
+        foreach ($notes as $key => [$title, $html]) {
+            echo '<div data-key="' . esc_attr($key) . '"><h3>' . esc_html($title) . '</h3>' . $html . '</div>';
+        }
+        echo '</div><div class="hq-pop" id="hq-pop" hidden><div class="hq-pop-card" role="dialog" aria-modal="true"><button type="button" class="hq-pop-x" aria-label="Закрыть">×</button>'
+            . '<div class="hq-pop-tag">сноска · читать, не учить</div><div class="hq-pop-body"></div></div></div>';
         echo '<script>(function(){var w=document.querySelector(".hq");w.classList.add("js");var b=w.querySelectorAll(".hq-tabs button");'
             . 'function go(k,scroll){b.forEach(function(x){x.classList.toggle("on",x.dataset.tab===k);});w.querySelectorAll(".hq-pane").forEach(function(p){p.classList.toggle("on",p.id==="hq-"+k);});'
             . 'try{history.replaceState(null,"","#"+k);}catch(e){}if(scroll){var t=w.querySelector(".hq-tabs");window.scrollTo({top:t.getBoundingClientRect().top+window.scrollY-40,behavior:"smooth"});}}'
             . 'b.forEach(function(x){x.addEventListener("click",function(){go(x.dataset.tab,true);});});'
             . 'var h=location.hash.slice(1);go(document.getElementById("hq-"+h)?h:b[0].dataset.tab,false);'
             . 'var t=document.getElementById("hq-terms"),hb=document.getElementById("hq-hide");if(t&&hb){hb.addEventListener("click",function(){var on=t.classList.toggle("hide");hb.textContent=on?"Показать все переводы":"Проверить себя";t.querySelectorAll(".open").forEach(function(c){c.classList.remove("open");});});'
-            . 't.addEventListener("click",function(e){var c=e.target.closest(".hq-term");if(c&&t.classList.contains("hide"))c.classList.toggle("open");});}})();</script>';
+            . 't.addEventListener("click",function(e){var c=e.target.closest(".hq-term");if(c&&t.classList.contains("hide"))c.classList.toggle("open");});}'
+            . 'var pop=document.getElementById("hq-pop"),body=pop.querySelector(".hq-pop-body"),src=document.getElementById("hq-notes");'
+            . 'w.querySelectorAll(".hq-fn").forEach(function(f){if(!src.querySelector("[data-key=\""+f.dataset.fn+"\"]"))f.classList.add("none");});'
+            . 'function close(){pop.hidden=true;document.body.style.overflow="";}'
+            . 'w.addEventListener("click",function(e){var f=e.target.closest(".hq-fn");if(!f)return;var n=src.querySelector("[data-key=\""+f.dataset.fn+"\"]");if(!n)return;body.innerHTML=n.innerHTML;pop.hidden=false;pop.querySelector(".hq-pop-card").scrollTop=0;document.body.style.overflow="hidden";});'
+            . 'pop.addEventListener("click",function(e){if(e.target===pop||e.target.closest(".hq-pop-x"))close();});document.addEventListener("keydown",function(e){if(e.key==="Escape")close();});'
+            . '})();</script>';
         echo '</div>';
     }
 
