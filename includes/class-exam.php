@@ -303,8 +303,9 @@ class Hastan_Exam
         $out = [];
         $parts = preg_split('/^###\s+(.+)$/mu', trim($text), -1, PREG_SPLIT_DELIM_CAPTURE);
         for ($i = 1; $i + 1 < count($parts); $i += 2) {
-            $title = trim($parts[$i]);
-            $out[self::note_key($title)] = [mb_strtoupper(mb_substr($title, 0, 1)) . mb_substr($title, 1), self::markdown($parts[$i + 1])];
+            $key = trim($parts[$i]);
+            $title = preg_replace('/^(bg|ru)\s+/u', '', $key); // «bg …» keys are the Bulgarian text's notes.
+            $out[self::note_key($key)] = [mb_strtoupper(mb_substr($title, 0, 1)) . mb_substr($title, 1), self::markdown($parts[$i + 1])];
         }
         return $out;
     }

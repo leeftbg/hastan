@@ -776,7 +776,7 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
             $tabs['why'] = ['Зачем мне', 'польза', Hastan_Exam::markdown((string) $m['why'])];
         }
         if (!empty($m['bg'])) {
-            $tabs['bg'] = ['Конспект', 'на български', '<div lang="bg">' . Hastan_Exam::markdown((string) $m['bg']) . '</div>'];
+            $tabs['bg'] = ['Български', 'текст за изпита', '<div lang="bg">' . Hastan_Exam::markdown((string) $m['bg']) . '</div>'];
         }
         if (!empty($m['terms'])) {
             $cards = '';
