@@ -19,6 +19,7 @@ class Hastan_Admin
         add_action('admin_post_hastan_picture', [self::class, 'save_picture']);
         add_action('admin_post_hastan_food', [self::class, 'save_food']);
         add_action('admin_post_hastan_goal', [self::class, 'handle_goal']);
+        add_action('admin_post_hastan_exam_audio', [self::class, 'save_exam_audio']);
     }
 
     public static function menu(): void
@@ -753,6 +754,35 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
         echo '</div>';
     }
 
+    private static function exam_player(string $code, string $lang): string
+    {
+        $url = Hastan_Exam::audio_url($code, $lang);
+        if ($url === '') {
+            return '';
+        }
+        $speeds = '';
+        foreach (['0.9', '1', '1.25', '1.5'] as $r) {
+            $speeds .= '<button type="button" data-r="' . $r . '"' . ($r === '1' ? ' class="on"' : '') . '>' . str_replace('.', ',', $r) . '×</button>';
+        }
+        return '<div class="hq-audio"><b>🎧 ' . ($lang === 'bg' ? 'Слушать по-болгарски' : 'Слушать') . '</b><audio controls preload="none" src="' . esc_url($url) . '"></audio><span class="sp">' . $speeds . '</span></div>';
+    }
+
+    public static function save_exam_audio(): void
+    {
+        self::check('hastan_exam_audio');
+        $q = Hastan_Goals::get_step((int) ($_POST['q'] ?? 0));
+        $goal = (int) ($_POST['goal'] ?? 0);
+        $notes = [];
+        foreach (['ru' => 'русское', 'bg' => 'болгарское'] as $lang => $label) {
+            if ($q && !empty($_FILES['audio_' . $lang]['name'])) {
+                $error = Hastan_Exam::save_audio($q['code'], $lang, $_FILES['audio_' . $lang]);
+                $notes[] = $error === '' ? "Загружено {$label} аудио." : "{$label} аудио: {$error}";
+            }
+        }
+        wp_safe_redirect(add_query_arg(['page' => 'hastan-goals', 'goal' => $goal, 'q' => (int) ($q['id'] ?? 0), 'hastan_notice' => rawurlencode(implode(' ', $notes) ?: 'Файл не выбран.')], admin_url('admin.php')));
+        exit;
+    }
+
     /** One exam question to study: Russian explanation, why it matters, the Bulgarian answer, terms and self-check. */
     private static function exam_question_page(array $goal, array $q): void
     {
@@ -770,13 +800,13 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
 
         $tabs = [];
         if (!empty($m['ru'])) {
-            $tabs['ru'] = ['Разбор', 'по-русски', Hastan_Exam::markdown((string) $m['ru']) . (!empty($m['sources']) ? '<div class="hq-sources"><h4>Источники</h4>' . Hastan_Exam::markdown((string) $m['sources']) . '</div>' : '')];
+            $tabs['ru'] = ['Разбор', 'по-русски', self::exam_player($q['code'], 'ru') . Hastan_Exam::markdown((string) $m['ru']) . (!empty($m['sources']) ? '<div class="hq-sources"><h4>Источники</h4>' . Hastan_Exam::markdown((string) $m['sources']) . '</div>' : '')];
         }
         if (!empty($m['why'])) {
             $tabs['why'] = ['Зачем мне', 'польза', Hastan_Exam::markdown((string) $m['why'])];
         }
         if (!empty($m['bg'])) {
-            $tabs['bg'] = ['Български', 'текст за изпита', '<div lang="bg">' . Hastan_Exam::markdown((string) $m['bg']) . '</div>'];
+            $tabs['bg'] = ['Български', 'текст за изпита', self::exam_player($q['code'], 'bg') . '<div lang="bg">' . Hastan_Exam::markdown((string) $m['bg']) . '</div>'];
         }
         if (!empty($m['terms'])) {
             $cards = '';
@@ -845,6 +875,10 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
 .hq-pop-card h3{font-family:Georgia,"Times New Roman",serif;font-size:21px;margin:4px 30px 8px 0;color:var(--ink)}.hq-pop-card p,.hq-pop-card li{font-size:15.5px;line-height:1.65}.hq-pop-card ul,.hq-pop-card ol{margin:6px 0 10px 20px}.hq-pop-card ul{list-style:disc}
 .hq-pop-tag{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:#3b7bbf}
 .hq-pop-x{position:absolute;right:12px;top:10px;border:0;background:#f0f0f1;border-radius:50%;width:32px;height:32px;font-size:20px;line-height:30px;cursor:pointer;color:#555}
+.hq-audio{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:10px 14px;margin:18px 0 6px}
+.hq-audio b{font-size:13px;color:var(--ink);white-space:nowrap}.hq-audio audio{flex:1;min-width:220px;height:40px}
+.hq-audio .sp{display:flex;gap:4px}.hq-audio .sp button{border:1px solid var(--line);background:#fff;border-radius:8px;padding:2px 7px;font-size:12px;cursor:pointer;color:var(--muted)}.hq-audio .sp button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.hq-upload{margin:-8px 0 22px;color:var(--muted);font-size:13px}.hq-upload summary{cursor:pointer}.hq-upload form{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-top:10px}.hq-upload label{display:flex;gap:6px;align-items:center}
 .hq-empty{background:#fff;border:1px dashed var(--line);border-radius:16px;padding:30px;text-align:center;color:var(--muted)}
 @media (max-width:600px){.hq-pop{align-items:flex-end;padding:0}.hq-pop-card{border-radius:18px 18px 0 0;max-height:85vh;padding:20px 20px 28px}.hq-hero{padding:20px}.hq-hero h1{font-size:21px}.hq-hero .code{font-size:36px}.hq-pane{padding:4px 18px 22px;font-size:15.5px}.hq-tabs{top:46px}.hq-quiz .a{padding-left:18px}}
 </style>';
@@ -867,6 +901,11 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
         foreach ($tabs as $key => [, , $html]) {
             echo '<section class="hq-pane" id="hq-' . esc_attr($key) . '">' . $html . '</section>';
         }
+        echo '<details class="hq-upload"><summary>Загрузить аудио</summary><form method="post" enctype="multipart/form-data" action="' . esc_url(admin_url('admin-post.php')) . '">'
+            . wp_nonce_field('hastan_exam_audio', '_wpnonce', true, false)
+            . '<input type="hidden" name="action" value="hastan_exam_audio"><input type="hidden" name="q" value="' . (int) $q['id'] . '"><input type="hidden" name="goal" value="' . $id . '">'
+            . '<label>По-русски <input type="file" name="audio_ru" accept=".mp3,audio/mpeg"></label><label>По-болгарски <input type="file" name="audio_bg" accept=".mp3,audio/mpeg"></label>'
+            . '<button class="button button-primary">Загрузить</button><span class="hq-note">MP3 до ' . esc_html(size_format(wp_max_upload_size())) . '. Новый файл заменяет старый.</span></form></details>';
         $notes = !empty($m['notes']) ? Hastan_Exam::notes((string) $m['notes']) : [];
         echo '<div hidden id="hq-notes">';
         foreach ($notes as $key => [$title, $html]) {
@@ -881,6 +920,7 @@ x.putImageData(out,0,0);}img.onload=go;t.onload=go;img.src=d.picture;t.src=d.til
             . 'var h=location.hash.slice(1);go(document.getElementById("hq-"+h)?h:b[0].dataset.tab,false);'
             . 'var t=document.getElementById("hq-terms"),hb=document.getElementById("hq-hide");if(t&&hb){hb.addEventListener("click",function(){var on=t.classList.toggle("hide");hb.textContent=on?"Показать все переводы":"Проверить себя";t.querySelectorAll(".open").forEach(function(c){c.classList.remove("open");});});'
             . 't.addEventListener("click",function(e){var c=e.target.closest(".hq-term");if(c&&t.classList.contains("hide"))c.classList.toggle("open");});}'
+            . 'w.querySelectorAll(".hq-audio").forEach(function(a){var au=a.querySelector("audio");a.querySelectorAll(".sp button").forEach(function(b){b.addEventListener("click",function(){au.playbackRate=parseFloat(b.dataset.r);a.querySelectorAll(".sp button").forEach(function(x){x.classList.toggle("on",x===b);});});});});'
             . 'var pop=document.getElementById("hq-pop"),body=pop.querySelector(".hq-pop-body"),src=document.getElementById("hq-notes");'
             . 'w.querySelectorAll(".hq-fn").forEach(function(f){if(!src.querySelector("[data-key=\""+f.dataset.fn+"\"]"))f.classList.add("none");});'
             . 'function close(){pop.hidden=true;document.body.style.overflow="";}'
