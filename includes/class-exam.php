@@ -129,6 +129,45 @@ class Hastan_Exam
         return $out;
     }
 
+    /* ---------- audio ---------- */
+
+    private static function audio_dir(): array
+    {
+        $up = wp_upload_dir();
+        return [$up['basedir'] . '/hastan-audio', $up['baseurl'] . '/hastan-audio'];
+    }
+
+    private static function audio_name(string $code, string $lang): string
+    {
+        return preg_replace('/[^0-9.]/', '', $code) . '-' . ($lang === 'bg' ? 'bg' : 'ru') . '.mp3';
+    }
+
+    /** URL of a question's recording in a language, or ''. */
+    public static function audio_url(string $code, string $lang): string
+    {
+        [$dir, $url] = self::audio_dir();
+        $file = $dir . '/' . self::audio_name($code, $lang);
+        return is_file($file) ? $url . '/' . self::audio_name($code, $lang) . '?v=' . filemtime($file) : '';
+    }
+
+    /** Stores an uploaded MP3; returns an error text or ''. */
+    public static function save_audio(string $code, string $lang, array $upload): string
+    {
+        if (($upload['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+            return 'Файл не загрузился (код ' . (int) ($upload['error'] ?? 0) . '). Возможно, он больше лимита сайта: ' . size_format(wp_max_upload_size()) . '.';
+        }
+        $head = (string) file_get_contents($upload['tmp_name'], false, null, 0, 3);
+        if (!str_ends_with(strtolower((string) $upload['name']), '.mp3') || ($head !== 'ID3' && (ord($head[0] ?? "\0") !== 0xFF))) {
+            return 'Нужен файл MP3.';
+        }
+        [$dir] = self::audio_dir();
+        wp_mkdir_p($dir);
+        if (!move_uploaded_file($upload['tmp_name'], $dir . '/' . self::audio_name($code, $lang))) {
+            return 'Не удалось сохранить файл.';
+        }
+        return '';
+    }
+
     /* ---------- tool ---------- */
 
     public static function tool_schema(): array
